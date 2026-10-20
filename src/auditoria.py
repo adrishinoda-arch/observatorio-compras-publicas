@@ -24,7 +24,9 @@ NULOS_DISFARCADOS = [
 ]
 
 # Caracteres típicos de Latin-1 mal interpretado como UTF-8 (dupla codificação)
-PADROES_ENCODING = ["Ã§", "Ã£", "Ã©", "Ã¡", "Ã³", "Ãº", "Ã­", "Ã‰", "Ã"]
+# Nota: "Ã" isolado NÃO está aqui — gera falso positivo em palavras
+# legítimas como "SÃO", "AÇÃO", "MUNICÍPIO".
+PADROES_ENCODING = ["Ã§", "Ã£", "Ã©", "Ã¡", "Ã³", "Ãº"]
 
 
 # ---------------------------------------------------------------- Bloco 1
@@ -87,8 +89,8 @@ def amostrar_formatos_monetarios(df: pd.DataFrame, nome_arquivo: str,
     padroes = {
         "com R$":             re.compile(r"^\s*R\$\s*"),
         "negativo (parênt)":  re.compile(r"^\(.*\)$"),
-        "vírgula decimal":    re.compile(r"\d,\d{2}$"),
-        "ponto decimal":      re.compile(r"\d\.\d{2}$"),
+        "vírgula decimal":    re.compile(r".*\d,\d+$"),
+        "ponto decimal":      re.compile(r".*\d\.\d+$"),
         "só dígitos":         re.compile(r"^\d+$"),
     }
     for col in colunas:
@@ -184,24 +186,64 @@ def detectar_zeros_e_vazios(df: pd.DataFrame, nome_arquivo: str) -> None:
         print("  (nenhuma ocorrência)")
 
 
+def parse_data_robusto(serie: pd.Series) -> pd.Series:
+    """
+    Converte uma série de strings em datetime, tentando múltiplos formatos.
+    Retorna NaT para valores que não casam com nenhum formato conhecido.
+
+    Esta mesma função será reaproveitada em src/limpeza.py na Sprint 2.
+    """
+    formatos = [
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d",
+        "%Y%m%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+        "%d-%m-%Y %H:%M:%S",
+        "%d-%m-%Y",
+        "%d.%m.%Y %H:%M:%S",
+        "%d.%m.%Y",
+    ]
+    texto = serie.astype(str).str.strip()
+    texto = texto.where(~texto.isin(["nan", "None", ""]), None)
+
+    resultado = pd.Series(pd.NaT, index=serie.index, dtype="datetime64[ns]")
+    for fmt in formatos:
+        pendentes = resultado.isna() & texto.notna()
+        if not pendentes.any():
+            break
+        tentativa = pd.to_datetime(texto[pendentes], format=fmt, errors="coerce")
+        resultado[pendentes] = tentativa
+
+    return resultado
+
+
 def verificar_cronologia(compras: pd.DataFrame,
                           resultados: pd.DataFrame) -> None:
-    """Pergunta 4: conta data_resultado anterior a data_publicacao."""
+    #Pergunta 4: conta data_resultado anterior a data_publicacao."""
     print("\n=== [P4] Cronologia: data_resultado vs. data_publicacao ===")
-    pub = pd.to_datetime(compras["data_publicacao"],
-                         errors="coerce", dayfirst=True)
+    pub = parse_data_robusto(compras["data_publicacao"])
     mapa_pub = dict(zip(compras["numero_controle_pncp"], pub))
 
     res = resultados.copy()
     res["data_pub"] = res["numero_controle_pncp"].map(mapa_pub)
-    res["data_res"] = pd.to_datetime(res["data_resultado"],
-                                     errors="coerce", dayfirst=True)
+    res["data_res"] = parse_data_robusto(res["data_resultado"])
 
+    total_resultados = len(res)
     comparaveis = res.dropna(subset=["data_pub", "data_res"])
     invertidas = int((comparaveis["data_res"] < comparaveis["data_pub"]).sum())
+    cobertura = len(comparaveis) / total_resultados * 100
 
-    print(f"Resultados com ambas as datas válidas:   {len(comparaveis):>6,}")
-    print(f"Datas invertidas (resultado < publicação): {invertidas:>6,}")
+    print(f"Total de resultados:                          {total_resultados:>6,}")
+    print(f"Resultados com ambas as datas válidas:        {len(comparaveis):>6,} ({cobertura:.1f}%)")
+    print(f"Datas invertidas (resultado < publicação):    {invertidas:>6,}")
     if invertidas == 0:
         print("OK: nenhuma data invertida.")
     else:
