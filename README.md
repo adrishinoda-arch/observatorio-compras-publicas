@@ -217,7 +217,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026), sem codificação em fins de semana. Cada Sprint tem um **MVP** e um **Critério de Aceite** explícitos, registrados no Trello.
 
-![Sprints do projeto](docs/img/sprints.png)
+![Sprints do projeto](docs/img/Sprints.png)
 
 ### 6.1. Histórico de Sprints
 
