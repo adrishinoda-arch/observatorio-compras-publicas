@@ -341,9 +341,51 @@ Os 8 formatos detectados na auditoria descrita na Seção 3 são cobertos pelos 
 - **`remover_invisiveis()`** usa caracteres zero-width literais no código-fonte (invisíveis no editor). Alternativa mais robusta: usar `\u200b` explícito como escape Unicode. Não impacta o resultado; é questão de manutenibilidade.
 
 <a id="42-regras-negocio"></a>
+
 ### 4.2. Regras de negócio da Controladoria (`src/montar_tabelas.py`)
 
-*[A preencher na Sprint 3]*
+*[A preencher na Sprint 3 — implementação das 12 regras de negócio]*
+
+#### 4.2.1. Decisões herdadas da auditoria (Sprint 1) e da limpeza (Sprint 2)
+
+Esta subseção registra decisões que **conectam** os achados da Seção 3 com a implementação da Sprint 3, evitando que pareçam "esquecimentos".
+
+| Coluna | Achado (Seção 3) | Decisão na Sprint 3 |
+| :--- | :--- | :--- |
+| `categoria_item` | 100% `"NÃO SE APLICA"` | **Descartada** — não vai para nenhuma tabela |
+| `catalogo_codigo_item` | 99,9% vazio (7.068 de 7.077) | **Descartada** |
+| `ordem_classificacao_srp` | 75% NaN (11.976) | **NaN → 1** (regra 2 do enunciado: "vazio conta como 1") |
+| `data_cancelamento` | 99,6% vazio (15.834 NaN) | **Lida como booleana** — preenchido = cancelado, independente do conteúdo |
+| `cnpj_orgao` com CPF | 3 registros com 11 dígitos | **Rejeitados** por `limpar_documento(tipo_pessoa="PJ")` → `sk_orgao = -1` |
+| Colunas monetárias | 6 colunas com formatos mistos | `converter_numero()` com `zero_eh_nulo=False` |
+| Parser de data | 8 formatos-base coexistem | `converter_data()` cobre os 8 (6 formatos-base + corte `[:10]`) |
+
+#### 4.2.2. Colunas numéricas com `zero_eh_nulo=False`
+
+O parâmetro `zero_eh_nulo` (definido em 4.1.2) deve ser `False` para as seguintes colunas (onde `0` é valor legítimo, não nulo):
+
+- `itens.csv`: `quantidade`, `valor_unitario_estimado`, `valor_total_estimado`
+- `resultados.csv`: `quantidade_homologada`, `valor_unitario_homologado`, `valor_total_homologado`, `ordem_classificacao_srp`, `sequencial_resultado`
+
+Todas as demais colunas usam `limpar_texto()` com o padrão `zero_eh_nulo=True`.
+
+#### 4.2.3. Duplicação intencional de parser de data
+
+Existem duas implementações de parser no projeto:
+
+| Parser | Onde | Propósito | Estratégia |
+| :--- | :--- | :--- | :--- |
+| `parse_data_robusto()` | `auditoria.py` | **Diagnóstico** (Sprint 1) | 16 variações, sem corte — maximiza detecção |
+| `converter_data()` | `limpeza.py` | **Operação** (Sprint 2 em diante) | 6 formatos-base + `[:10]` para descartar hora |
+
+Ambas cobrem os 8 formatos-base identificados em 3.2.4. A duplicação é **intencional**: o diagnóstico exige robustez máxima; a operação exige clareza e velocidade.
+
+#### 4.2.4. Colunas onde `padronizar_nome()` será aplicado
+
+- `compras.razao_social_orgao` → `dim_orgao.nome_orgao`
+- `resultados.nome_fornecedor` → `dim_fornecedor.nome_fornecedor`
+- `itens.descricao` → vai para `fato_item_contratado.descricao_item` **sem** uppercase (preserva case original para legibilidade em auditoria)
+- `compras.objeto_compra` → usado apenas como auxiliar da regra 8 (perfil do gasto), **sem** uppercase
 
 [⬆ Voltar ao índice](#-índice)
 
