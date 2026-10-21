@@ -1,20 +1,87 @@
+<a id="topo"></a>
+
 # Projeto: Auditoria e Inteligência em Compras Públicas (PNCP)
+
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![pandas](https://img.shields.io/badge/pandas-150458?style=for-the-badge&logo=pandas&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white)
+![Power BI](https://img.shields.io/badge/Power_BI-F2C811?style=for-the-badge&logo=powerbi&logoColor=black)
+![Git](https://img.shields.io/badge/Git-F05032?style=for-the-badge&logo=git&logoColor=white)
+![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)
+
+</div>
 
 Esteira analítica ponta a ponta (End-to-End) para auditoria e inteligência de dados em compras públicas federais. Transforma dados brutos e corrompidos do PNCP em um ambiente analítico confiável, auditável e executivo para a Controladoria, utilizando **Python**, **PostgreSQL** e **Power BI**.
 
+---
+
+## 📑 Índice
+
+- [1. Contexto e Problema de Negócio](#1-contexto)
+- [2. Arquitetura da Solução e Tecnologias](#2-arquitetura)
+- [3. Auditoria Inicial e Dicionário de Inconsistências](#3-auditoria)
+  - [3.1. Pergunta 1 — Volumetria e duplicidade da chave](#31-volumetria)
+  - [3.2. Pergunta 2 — Formatos de dinheiro, data, CNPJ e nulos](#32-formatos)
+  - [3.3. Pergunta 3 — Encoding quebrado](#33-encoding)
+  - [3.4. Pergunta 4 — Cronologia](#34-cronologia)
+  - [3.5. Síntese para a Sprint 2](#35-sintese)
+- [4. Decisões Técnicas e Regras de Negócio](#4-decisoes)
+  - [4.1. Sanitização em Python (`src/limpeza.py`)](#41-sanitizacao)
+  - [4.2. Regras de negócio da Controladoria](#42-regras-negocio)
+- [5. Modelagem Dimensional (Star Schema)](#5-modelagem)
+- [6. Planejamento em Sprints e Lições Aprendidas](#6-sprints)
+  - [6.1. Histórico de Sprints](#61-historico)
+- [7. Guia de Execução](#7-execucao)
+- [8. Melhorias Futuras e Vídeo de Defesa](#8-melhorias)
+
+---
+
+<a id="1-contexto"></a>
 ## 1. Contexto e Problema de Negócio
+
 *[A preencher na Fase 1]*
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="2-arquitetura"></a>
 
 ## 2. Arquitetura da Solução e Tecnologias
+
 *[A preencher na Fase 1]*
+
 *(Python, PostgreSQL, Power BI, Git)*
 
+### 2.3. Estratégia de Versionamento (Git Workflow)
+
+O projeto adotou **Feature Branching por fase**, com **merge via Pull Request** ao final de cada uma. Objetivo: manter a `main` sempre estável e preservar o histórico granular da evolução.
+
+**Ciclo por fase:**
+
+1. `git checkout -b feat/fase-N-...` a partir da `main` atualizada;
+2. Commits granulares na branch (`feat:`, `fix:`, `docs:`);
+3. Pull Request descritivo para `main`, ao concluir o Checklist de Fechamento da fase;
+4. **Create a merge commit** (não squash) — preserva os commits originais no histórico da `main`.
+
+**Rollback:** como cada fase vive numa branch isolada, reverter uma entrega problemática é `git checkout main` + deletar a branch — a `main` permanece intacta no estado anterior. A granularidade dos commits (não-squash) permite ainda `git revert` cirúrgico de um único commit, sem desfazer a fase inteira. O Pull Request mergeado funciona como ponto de retorno documentado.
+
+**Segurança:** a `main` é protegida por dois mecanismos — o `.gitignore` bloqueia o `.env` (credenciais do PostgreSQL nunca entram no repositório) e o fluxo de PR impede pushes diretos, forçando que todo código passe por validação contra a Prova Real antes do merge. As branches de fase são mantidas após o merge para auditoria retroativa no vídeo de defesa.
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="3-auditoria"></a>
 ## 3. Auditoria Inicial e Dicionário de Inconsistências
 
 O script `src/auditoria.py` faz um raio-x **somente diagnóstico** (não altera os dados): carrega os 3 CSVs como texto (`dtype=str`) para preservar zeros à esquerda e evitar inferência equivocada de tipos. As subseções abaixo respondem, uma a uma, às 4 perguntas da Seção 7.4 do enunciado.
 
 ---
 
+<a id="31-volumetria"></a>
 ### 3.1. Pergunta 1 — Volumetria e duplicidade da chave
 
 > *"Quantas linhas tem cada arquivo? Há `numero_controle_pncp` repetido em `compras.csv`?"*
@@ -26,13 +93,13 @@ O script `src/auditoria.py` faz um raio-x **somente diagnóstico** (não altera 
 - **`resultados.csv`:** 15.896 linhas × 13 colunas.
 - **`numero_controle_pncp` em `compras.csv`:** 2.042 linhas, 2.042 valores distintos → **zero duplicatas**. O grão "1 linha por contratação" está preservado.
 
-
 **Chave de ligação:** `numero_controle_pncp` (liga `compras` → `itens` → `resultados`). A combinação `numero_controle_pncp` + `numero_item` identifica unicamente cada linha de `itens` e de `resultados`.
 
 Os três números de linhas conferem **exatamente** com o Anexo 8 (Prova Real) do enunciado.
 
 ---
 
+<a id="32-formatos"></a>
 ### 3.2. Pergunta 2 — Formatos de dinheiro, data, CNPJ e nulos
 
 > *"Que formatos de dinheiro, de data e de CNPJ aparecem? Quais colunas têm N/A, -, 0, vazio?"*
@@ -150,6 +217,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 ---
 
+<a id="33-encoding"></a>
 ### 3.3. Pergunta 3 — Encoding quebrado
 
 > *"Existe texto com acento quebrado (Ã§, Ã£)? Em quais colunas?"*
@@ -172,6 +240,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 ---
 
+<a id="34-cronologia"></a>
 ### 3.4. Pergunta 4 — Cronologia: `data_resultado` vs. `data_publicacao`
 
 > *"Existe `data_resultado` anterior a `data_publicacao`?"*
@@ -190,6 +259,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 ---
 
+<a id="35-sintese"></a>
 ### 3.5. Síntese para a Sprint 2
 
 | Inconsistência | Colunas afetadas | Estratégia prevista |
@@ -205,20 +275,97 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 | **`catalogo_codigo_item` vazio** | `itens.csv` | Descartar (99,9% vazio) |
 | **Datas invertidas** | `resultados.data_resultado` vs. `compras.data_publicacao` | Anular `data_homologacao` e `dias_ciclo` (regra 7) |
 
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="4-decisoes"></a>
 ## 4. Decisões Técnicas e Regras de Negócio
-*[A preencher na Fase 2 e 3]*
-*Como tratamos os nulos, a regra do vencedor, os itens rejeitados (e seus motivos).*
 
+<a id="41-sanitizacao"></a>
+### 4.1. Sanitização em Python (`src/limpeza.py`) — Fase 2 (Engenharia de Dados Python) — Sprint 2
+
+O módulo `src/limpeza.py` foi concluído com **54/54 testes passando**. Cada função resolve uma classe de inconsistência identificada na Seção 3.
+
+#### 4.1.1. Limpeza de texto
+
+| Função | Inconsistência tratada | Decisão técnica |
+| :--- | :--- | :--- |
+| `remover_invisiveis()` | Caracteres zero-width (`\u200b`, `\u200c`, `\ufeff`) de sistemas antigos | Substituição literal por string vazia |
+| `consertar_acento()` | Dupla codificação UTF-8→Latin-1 (`AquisiÃ§Ã£o` → `Aquisição`) | `encode("latin-1").decode("utf-8")` dentro de `try/except` — se falhar, devolve o texto como estava |
+| `tirar_espacos()` | Espaços repetidos, tabs, quebras de linha, non-breaking space (`\xa0`) | `" ".join(texto.split())` — o `split()` sem argumento cobre **todos** os whitespaces |
+| `eh_nulo()` | Nulos disfarçados (`N/A`, `-`, `NULL`, `"0"` em texto) | Retorna `True` se o texto (em maiúsculas) está no set `NULOS` |
+| `limpar_texto()` | Pipeline de todas as anteriores | Remover invisíveis → corrigir acento → tirar espaços → checar se virou nulo |
+| `padronizar_nome()` | Nomes de órgão/fornecedor escritos de formas diferentes | `upper()` + troca de `-` por `" - "` (o `tirar_espacos` absorve duplicados) |
+
+#### 4.1.2. Ambiguidade do `"0"` — decisão de *design*
+
+A Seção 3 registrou que `"0"` **não foi tratado como nulo na auditoria**, aguardando separação por tipo (texto vs. numérico). A `limpeza.py` resolve a ambiguidade através do parâmetro **`zero_eh_nulo`**:
+
+- **`zero_eh_nulo=True`** (padrão, para campos de texto) — `"0"` é nulo disfarçado.
+- **`zero_eh_nulo=False`** (para campos numéricos) — `"0"` é o valor `0.0`.
+
+A função `converter_numero()` chama `limpar_texto(texto, zero_eh_nulo=False)` explicitamente. Os campos `processo`, `modo_disputa`, `situacao_item` e `porte` (identificados na Seção 3) usarão o padrão `True`.
+
+#### 4.1.3. Documentos (CNPJ/CPF)
+
+| Função | Decisão técnica |
+| :--- | :--- |
+| `limpar_documento()` | Extrai apenas dígitos (`c.isdigit()`), descarta máscaras. Usa `zfill(tamanho)` para restaurar zeros à esquerda perdidos. Tamanho = 14 (PJ), 11 (PF) ou inferido pelo comprimento. **Pessoa estrangeira (PE)** é preservada como texto em maiúsculas. Documentos com dígitos a mais são rejeitados (`None`). |
+
+**Cobertura contra a Seção 3:**
+- 175 CNPJs com zero à esquerda em `ni_fornecedor` → `zfill(14)` recupera;
+- 10 CNPJs com zero perdido em `cnpj_orgao` → idem;
+- 3.981 CPFs puros + 392 CPFs mascarados → extração limpa;
+- 3 CPFs em `cnpj_orgao` → serão rejeitados pela função (`tipo_pessoa="PJ"` espera 14 dígitos). Decisão de destino final na Sprint 3.
+
+#### 4.1.4. Dinheiro e números
+
+| Função | Decisão técnica |
+| :--- | :--- |
+| `converter_numero()` | Implementa a regra do enunciado: **ponto ou vírgula sozinho é decimal; repetido é milhar; quando os dois aparecem, o último é o decimal**. Negativos detectados por `(`, `-` no início ou `-` no final. Usa `zero_eh_nulo=False` (aqui `"0"` é valor, não nulo). |
+
+Todos os formatos monetários identificados na Seção 3 são convertidos corretamente (`R$ 419.848,81`, `19.290.383,46`, `250,782.10`, `900.0`, `1.234.567`, `(1.500,00)`, `1.500,00-`).
+
+#### 4.1.5. Datas
+
+| Função | Decisão técnica |
+| :--- | :--- |
+| `converter_data()` | Corta o texto em 10 caracteres (`[:10]`) para descartar a hora. Testa **6 formatos** em sequência. Retorna `datetime.date` (não `datetime`) — alinhado com o tipo `DATE` do PostgreSQL (Sprint 4). Valida faixa de ano **2000–2030** — datas fora disso (ex: `0001-01-01`) são rejeitadas como impossíveis. |
+
+Os 8 formatos detectados na auditoria descrita na Seção 3 são cobertos pelos 6 formatos-base (combinados com/sem hora). Datas invertidas (1.056 casos) serão tratadas na Sprint 3 pela **regra 7** do enunciado.
+
+#### 4.1.6. Limitações conhecidas (alimentam a Seção 8 — Melhorias Futuras)
+
+- **`padronizar_nome()`** insere espaço ao redor de qualquer `-`. Resolve `"Pregão-Eletrônico"` → `"PREGÃO - ELETRÔNICO"`, mas alteraria códigos com hífen interno (ex: `"ABC-123"` → `"ABC - 123"`). Para o escopo atual (nomes de órgão/fornecedor), é aceitável.
+- **`remover_invisiveis()`** usa caracteres zero-width literais no código-fonte (invisíveis no editor). Alternativa mais robusta: usar `\u200b` explícito como escape Unicode. Não impacta o resultado; é questão de manutenibilidade.
+
+<a id="42-regras-negocio"></a>
+### 4.2. Regras de negócio da Controladoria (`src/montar_tabelas.py`)
+
+*[A preencher na Sprint 3]*
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="5-modelagem"></a>
 ## 5. Modelagem Dimensional (Star Schema)
-*[A preencher na Fase 3]*
-*Explicação do modelo e link para a imagem do diagrama (docs/img/diagrama.png).*
 
+*[A preencher na Fase 3 — explicação do modelo e link para a imagem do diagrama (`docs/img/diagrama.png`)]*
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="6-sprints"></a>
 ## 6. Planejamento em Sprints e Lições Aprendidas
 
 O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026), sem codificação em fins de semana. Cada Sprint tem um **MVP** e um **Critério de Aceite** explícitos, registrados no Trello.
 
-![Sprints do projeto](docs/img/Sprints.png)
+![Sprints do projeto](docs/img/sprints.png)
 
+<a id="61-historico"></a>
 ### 6.1. Histórico de Sprints
 
 #### Fase 1 — Fundação e Auditoria (Sprints 0 e 1)
@@ -236,10 +383,39 @@ Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias
 
 **Aprendizado:** *bugs* de diagnóstico são **mais perigosos que *bugs* de produção** — eles enviesam as decisões seguintes. A regra "vírgula + ponto = total" foi adotada como critério de validação.
 
-## 7. Guia de Execução (Como reproduzir)
-*[A preencher na Fase 3 e finalizar na Fase 5]*
-*Passo a passo: instalar requirements, configurar .env, rodar scripts na ordem correta.*
+#### Fase 2 — Engenharia de Dados (Sprints 2 e 3) — em andamento
 
+##### Sprint 2 — Limpeza e Sanitização
+
+**O que foi planejado:** completar `src/limpeza.py` (kit do professor) com funções de limpeza de texto, documentos, números e datas.
+
+**O que foi entregue:**
+- `src/limpeza.py` 100% preenchido (19 lacunas resolvidas).
+- Autoteste: **54/54 exemplos certos** na primeira execução.
+
+**Desafios e adaptações:**
+- **Ambiguidade do `"0"`:** o número pode ser nulo (em campo de texto) ou valor legítimo (em campo numérico). Solução: parâmetro `zero_eh_nulo` controla o comportamento por contexto. Documentado na Seção 4.1.2.
+- **Encoding resiliente:** a função `consertar_acento()` usa `try/except` — funciona tanto em textos corrompidos (`AquisiÃ§Ã£o` → `Aquisição`) quanto em textos já corretos (`Aquisição` permanece igual).
+- **Datas em 6 formatos + corte de hora:** `converter_data()` testa os 6 formatos-base do arquivo do professor e usa `[:10]` para descartar a hora — decisão alinhada com o tipo `DATE` do PostgreSQL.
+
+**Aprendizado:** a estratégia de "uma função por vez, testada antes de avançar" (conforme sugerido pelo próprio kit) evitou retrabalho. Todos os 54 testes passaram na **primeira execução** — sinal de que as 19 lacunas foram preenchidas com o conceito entendido, não por tentativa.
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="7-execucao"></a>
+## 7. Guia de Execução (Como reproduzir)
+
+*[A preencher na Fase 3 e finalizar na Fase 5 — passo a passo: instalar requirements, configurar `.env`, rodar scripts na ordem correta]*
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="8-melhorias"></a>
 ## 8. Melhorias Futuras e Vídeo de Defesa
-*[A preencher na Fase 5]*
-*Link do vídeo no Google Drive.*
+
+*[A preencher na Fase 5 — link do vídeo no Google Drive]*
+
+[⬆ Voltar ao índice](#-índice)
