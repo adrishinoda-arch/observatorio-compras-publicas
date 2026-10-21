@@ -214,9 +214,27 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 *Explicação do modelo e link para a imagem do diagrama (docs/img/diagrama.png).*
 
 ## 6. Planejamento em Sprints e Lições Aprendidas
-*[A preencher em todas as fases]*
-*![Sprints do projeto](docs/img/sprints.png)*
-*Registro histórico do que foi entregue e desafios superados em cada fase.*
+
+O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026), sem codificação em fins de semana. Cada Sprint tem um **MVP** e um **Critério de Aceite** explícitos, registrados no Trello.
+
+![Sprints do projeto](docs/img/sprints.png)
+
+### 6.1. Histórico de Sprints
+
+#### Fase 1 — Fundação e Auditoria (Sprints 0 e 1)
+
+Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias nos CSVs brutos.
+
+**Entregas:**
+- **Sprint 0:** repositório estruturado, `.gitignore` protegendo `.env`, README esqueleto, primeiro commit na branch `feat/fase-1-fundacao`.
+- **Sprint 1:** `src/auditoria.py` com 9 funções cobrindo as 4 perguntas da Seção 7.4 do enunciado; Seção 3 do README preenchida com o dicionário de inconsistências.
+
+**Desafios e adaptações:**
+- **Falso positivo no encoding:** a primeira versão do script usava `"Ã"` isolado como padrão de detecção, gerando ~300 falsos positivos em palavras legítimas ("SÃO", "AÇÃO", "MUNICÍPIO"). Corrigido removendo o padrão isolado e mantendo só combinações de dupla codificação (`Ã§`, `Ã£`, `Ã©`...).
+- **Parser de data incompleto:** `pd.to_datetime(dayfirst=True)` só reconhecia 1,9% dos resultados (310 de 15.896). Implementada `parse_data_robusto()` com 16 variações de formato, elevando a cobertura para **100%** e revelando **1.056 datas invertidas** (contra 142 no parser ingênuo — número anterior era enviesado).
+- **Classificação monetária subestimada:** os regex estritos (`\d,\d{2}$`) só casavam valores curtos. Refinado com `.*` no prefixo e `\d+` no final, alcançando **classificação 100% completa** (vírgula + ponto = total em todas as 6 colunas).
+
+**Aprendizado:** *bugs* de diagnóstico são **mais perigosos que *bugs* de produção** — eles enviesam as decisões seguintes. A regra "vírgula + ponto = total" foi adotada como critério de validação.
 
 ## 7. Guia de Execução (Como reproduzir)
 *[A preencher na Fase 3 e finalizar na Fase 5]*
