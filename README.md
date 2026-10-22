@@ -421,9 +421,21 @@ O script `src/montar_tabelas.py` foi implementado com sucesso: **todos os 10 nú
 | 11. Região | `uf_sigla → REGIAO` (dicionário do Anexo 7.6) |
 | 12. Separadores numéricos | `converter_numero()` (Sprint 2) — regra do "último símbolo = decimal" |
 
-**Itens rejeitados — distribuição por motivo** *(a detalhar via `rejeitado` boolean no código, Sprint 5)*:
+**Itens rejeitados — critérios da regra 4:**
 
-Os 99 itens rejeitados são distribuídos entre os 7 critérios da regra 4. A documentação detalhada por motivo será adicionada na Sprint 5 (quando o `montar_tabelas.py` já roda estável e podemos analisar o `rejeitado` por categoria sem impacto no pipeline).
+Foram rejeitados **99 itens** pelos 7 critérios da regra 4 do enunciado. Cada item foi classificado pelo **primeiro critério que disparou** a rejeição (se um item viola mais de um, conta apenas o primeiro):
+
+| # | Critério de rejeição |
+| :---: | :--- |
+| 1 | Quantidade vazia ou ≤ 0 |
+| 2 | Valor unitário estimado ausente ou ≤ 0 |
+| 3 | Valor unitário homologado ausente ou ≤ 0 |
+| 4 | Orçamento sigiloso (`sigiloso = True`) |
+| 5 | Valor total estimado menor que R$ 1 |
+| 6 | Valor total homologado mais de 1.000× o valor total estimado |
+| 7 | Valor total (estimado ou homologado) acima de R$ 1 trilhão — limite definido para não estourar o tipo `DECIMAL(18,2)` do PostgreSQL na Sprint 4 |
+
+Os itens rejeitados **não são carregados na tabela Fato**, a verificação é feita pelo total (99, conforme Anexo 8) são apenas contabilizados.
 
 **Aprendizado:** a Prova Real foi batida na **primeira execução** após corrigir 1 erro de sintaxe (duplicação no `dias_ciclo`). A estratégia de implementar as 12 regras em ordem de dependência (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) evitou retrabalho.
 
@@ -481,6 +493,20 @@ Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias
 - **Datas em 6 formatos + corte de hora:** `converter_data()` testa os 6 formatos-base do arquivo do professor e usa `[:10]` para descartar a hora — decisão alinhada com o tipo `DATE` do PostgreSQL.
 
 **Aprendizado:** a estratégia de "uma função por vez, testada antes de avançar" (conforme sugerido pelo próprio kit) evitou retrabalho. Todos os 54 testes passaram na **primeira execução** — sinal de que as 19 lacunas foram preenchidas com o conceito entendido, não por tentativa.
+
+##### Sprint 3 — Modelagem e Regras de Negócio
+
+**O que foi planejado:** implementar as 12 regras de negócio em `src/montar_tabelas.py` e bater todos os números da Prova Real (Anexo 8).
+
+**O que foi entregue:**
+- `src/montar_tabelas.py` 100% implementado (31 lacunas resolvidas).
+- **Prova Real batida em todos os 10 números** do Anexo 8, na **primeira execução**.
+
+**Desafios e adaptações:**
+
+-**COMPLETAR (COLOCAR 99)**
+
+**Aprendizado:** a **estratégia de implementar as 12 regras em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
 
 [⬆ Voltar ao índice](#-índice)
 
