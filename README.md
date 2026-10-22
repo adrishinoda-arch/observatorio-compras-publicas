@@ -444,9 +444,38 @@ Os itens rejeitados **não são carregados na tabela Fato**, a verificação é 
 ---
 
 <a id="5-modelagem"></a>
+
 ## 5. Modelagem Dimensional (Star Schema)
 
-*[A preencher na Fase 3 — explicação do modelo e link para a imagem do diagrama (`docs/img/diagrama.png`)]*
+A camada analítica segue o modelo **Star Schema** (1 tabela Fato + 4 Dimensões), implementado no PostgreSQL pela Sprint.
+
+### 5.1. Diagrama
+
+![Diagrama do Star Schema](docs/img/diagrama.png)
+
+### 5.2. Estrutura
+
+| Tabela | Papel | Linhas | Chave natural (UNIQUE) | Chave substituta (PK) |
+| :--- | :--- | ---: | :--- | :--- |
+| `fato_item_contratado` | **FATO** — o que foi comprado | 6.126 | `numero_controle_pncp` + `numero_item` | `sk_fato` (SERIAL) |
+| `dim_orgao` | Quem comprou | 363 | `cnpj_orgao` | `sk_orgao` |
+| `dim_fornecedor` | Quem vendeu | 2.652 | `ni_fornecedor` | `sk_fornecedor` |
+| `dim_modalidade` | Como comprou | 7 | `modalidade_id` | `sk_modalidade` |
+| `dim_localidade` | Onde | 27 | `uf_sigla` | `sk_localidade` |
+
+### 5.3. Decisões de modelagem
+
+- **Surrogate keys (`sk_*`):** chaves substitutas inteiras, geradas em ordem crescente no `montar_tabelas.py`. Isolam a Fato das chaves naturais (CNPJ, sigla de UF), que podem mudar de formato;
+- **Fato no grão do item:** 1 linha por `numero_controle_pncp` + `numero_item` (constraint `UNIQUE` composta);
+- **Integridade referencial:** 4 FKs da Fato apontam para as 4 Dimensões, todas `NOT NULL`. A Prova Real confirmou que **não há FK órfã** — a linha `-1` ("Não informado") **não foi necessária**;
+- **Tipos de dados:**
+  - `DECIMAL(18,2)` para valores monetários totais
+  - `DECIMAL(18,4)` para preços unitários e quantidades;
+  - `DATE` para datas
+  - `SMALLINT` para a flag `comparavel` (0 ou 1).
+- **CHECKs de integridade:** `quantidade > 0`; todos os valores `>= 0`; `comparavel IN (0, 1)`.
+- **Campos vazios:** `data_homologacao`, `economia_valor` e `dias_ciclo` são `NULL` quando a regra de negócio anula o dado (230 itens sem ciclo, itens não comparáveis);
+- **Tempo no Power BI:** a dimensão Calendário **não é tabela do banco** — é criada em DAX no Power BI (Sprint 6), relacionada a `data_publicacao` e `data_homologacao` via `USERELATIONSHIP`.
 
 [⬆ Voltar ao índice](#-índice)
 
@@ -520,6 +549,38 @@ Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias
 - **Sprint 3 atravessou o fim de semana** (23/10 sexta → 26/10 segunda), exigindo divisão interna: regras 1-5 na sexta, regras 6-12 na segunda.
 
 **Aprendizado:** a estratégia de implementar as 12 regras **em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
+
+---
+
+#### Fase 3 — Banco de Dados (Sprints 4 e 5) — em andamento
+
+##### Sprint 4 — Banco de Dados e Carga
+
+**O que foi planejado:** escrever o `sql/01_criar_banco.sql` (Star Schema: 1 Fato + 4 Dimensões), completar as 6 lacunas do `src/carregar.py` e validar as 5 contagens contra a Prova Real.
+
+**O que foi entregue:**
+
+- `sql/01_criar_banco.sql` criado do zero — 5 tabelas com PKs, FKs, UNIQUEs e CHECKs.
+- `src/carregar.py` com as 6 lacunas preenchidas (`inserir_em_lote`, `executar_script`, `"Int64"`, `fato_item_contratado`, `COUNT(*)`).
+- **Carregamento validado:** as 5 contagens batem exatamente com o Anexo 8.
+
+| Tabela | Carregado | Prova Real |
+| :--- | ---: | ---: |
+| `fato_item_contratado` | 6.126 | 6.126 |
+| `dim_orgao` | 363 | 363 |
+| `dim_fornecedor` | 2.652 | 2.652 |
+| `dim_modalidade` | 7 | 7 |
+| `dim_localidade` | 27 | 27 |
+
+**Desafios e adaptações:**
+
+- **`pg_isready` não está no PATH do Windows:** a validação inicial do PostgreSQL foi feita com `Test-NetConnection -Port 5432` (porta aberta) + um teste de conexão real via Python (`psycopg2.connect` + `config.PG_CONFIG`). O `pg_isready` só está disponível se os binários do PostgreSQL estiverem no PATH — o que não é o padrão no Windows.
+- **`ImportError` no botão ▶️ do VS Code:** a execução direta (`python src/carregar.py`) falha com `ModuleNotFoundError: No module named 'src'` porque o Python adiciona `src/` ao `sys.path[0]`. A execução via **modo módulo** (`python -m src.carregar`) funciona corretamente. Decisão registrada na docstring do arquivo do kit: *"COMO RODAR: python -m src.carregar"*.
+- **Linha `-1` ("Não informado") não foi necessária:** a Seção 4.3 do enunciado indica criar a linha `-1` nas dimensões **se** houver FK órfã. A Prova Real confirmou zero FKs órfãs (as 5 contagens batem com o Anexo 8). Por isso, incluí-la faria as contagens divergirem (364, 2.653, 8, 28) — o script `01_criar_banco.sql` documenta isso com um comentário e fornece o template de INSERT caso um dia seja necessário.
+- **Tratamento de exceções via `banco.py`:** o `banco.py` do kit já implementa controle de falhas — a função `inserir_em_lote()` chama `conexao.commit()` apenas no final de cada operação, garantindo rollback implícito em caso de violação de constraint. A `carregar.py` apenas orquestra — não reimplementamos `try/except` para não duplicar o que o kit já cobre.
+- **Diagrama do Star Schema em Mermaid:** gerado em [mermaid.live](https://mermaid.live), exportado como PNG para `docs/img/diagrama.png`. O código-fonte Mermaid está versionado no README (Seção 5), permitindo regeneração futura — abordagem "Diagrams-as-Code".
+
+**Aprendizado:** validar a conexão real via Python (`psycopg2.connect`) antes de escrever o DDL evita retrabalho. O `Test-NetConnection` só confirma que a porta está aberta — não confirma credenciais nem que o banco existe. Validar com a mesma stack que o pipeline vai usar (psycopg2 + config.py) elimina surpresas.
 
 [⬆ Voltar ao índice](#-índice)
 
