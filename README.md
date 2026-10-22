@@ -387,6 +387,46 @@ Ambas cobrem os 8 formatos-base identificados em 3.2.4. A duplicação é **inte
 - `itens.descricao` → vai para `fato_item_contratado.descricao_item` **sem** uppercase (preserva case original para legibilidade em auditoria)
 - `compras.objeto_compra` → usado apenas como auxiliar da regra 8 (perfil do gasto), **sem** uppercase
 
+#### 4.2.5. Implementação das 12 regras de negócio — resultado
+
+O script `src/montar_tabelas.py` foi implementado com sucesso: **todos os 10 números da Prova Real batem** com o Anexo 8 do enunciado.
+
+| Métrica | Obtido | Prova Real | ✓ |
+| :--- | ---: | ---: | :---: |
+| Itens na fato | 6.126 | 6.126 | ✅ |
+| Contratações distintas | 1.962 | 1.962 | ✅ |
+| Fornecedores | 2.652 | 2.652 | ✅ |
+| Órgãos (CNPJ) | 363 | 363 | ✅ |
+| Volume homologado | R$ 8.044.498.805,74 | R$ 8.044.498.805,74 | ✅ |
+| Itens comparáveis | 5.457 | 5.457 | ✅ |
+| Economia | 14,46% | 14,46% | ✅ |
+| Ciclo médio / máximo | 48,1 / 611 | 48,1 / 611 | ✅ |
+| Itens sem ciclo | 230 | 230 | ✅ |
+| Perfil do gasto | Obras 60,8% / Serviços 36,6% / Bens 2,6% | idem | ✅ |
+
+**Regras implementadas (referência: Seção 4.2 do enunciado):**
+
+| Regra | Implementação |
+| :--- | :--- |
+| 1. Grão da fato | `numero_controle_pncp` + `numero_item` (garantido na Etapa 9 pelo `drop_duplicates`) |
+| 2. Um vencedor por item | Filtrar cancelados → ordenar por `ordem` e `sequencial` → `drop_duplicates` mantém o 1º |
+| 3. Só itens com resultado | `merge(how="inner")` — 6.225 itens com resultado (852 sem resultado ficaram fora) |
+| 4. Itens rejeitados | 99 rejeitados (quantidade ≤ 0, estimado/homologado ≤ 0, sigiloso, valor < R$ 1, hom > 1000× est, > R$ 1 tri) |
+| 5. Valores | `valor_total = valor_unitario × quantidade` (usando quantidade homologada quando > 0) |
+| 6. Comparável e economia | `modalidade_id != 12` E `razão entre 0,1 e 10` → 5.457 comparáveis; economia só onde comparável |
+| 7. Cronologia | Homologação anterior à publicação → `data_homologacao = None` (230 itens sem ciclo) |
+| 8. Perfil do gasto | Regex `\b(OBRAS?|CONSTRUÇÃO|REFORMA|ENGENHARIA)\b` sobre `descricao + objeto_compra`; prioridade para Obras |
+| 9. Modalidade | Padronização via dicionário `MODALIDADES[id]` |
+| 10. Órgão | `limpar_documento(v, "PJ")` + `padronizar_nome` (363 unidades compradoras) |
+| 11. Região | `uf_sigla → REGIAO` (dicionário do Anexo 7.6) |
+| 12. Separadores numéricos | `converter_numero()` (Sprint 2) — regra do "último símbolo = decimal" |
+
+**Itens rejeitados — distribuição por motivo** *(a detalhar via `rejeitado` boolean no código, Sprint 5)*:
+
+Os 99 itens rejeitados são distribuídos entre os 7 critérios da regra 4. A documentação detalhada por motivo será adicionada na Sprint 5 (quando o `montar_tabelas.py` já roda estável e podemos analisar o `rejeitado` por categoria sem impacto no pipeline).
+
+**Aprendizado:** a Prova Real foi batida na **primeira execução** após corrigir 1 erro de sintaxe (duplicação no `dias_ciclo`). A estratégia de implementar as 12 regras em ordem de dependência (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) evitou retrabalho.
+
 [⬆ Voltar ao índice](#-índice)
 
 ---
