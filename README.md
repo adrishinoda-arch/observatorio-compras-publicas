@@ -460,6 +460,7 @@ O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando
 ![Sprints do projeto](docs/img/sprints.png)
 
 <a id="61-historico"></a>
+
 ### 6.1. Histórico de Sprints
 
 #### Fase 1 — Fundação e Auditoria (Sprints 0 e 1)
@@ -467,46 +468,58 @@ O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando
 Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias nos CSVs brutos.
 
 **Entregas:**
+
 - **Sprint 0:** repositório estruturado, `.gitignore` protegendo `.env`, README esqueleto, primeiro commit na branch `feat/fase-1-fundacao`.
 - **Sprint 1:** `src/auditoria.py` com 9 funções cobrindo as 4 perguntas da Seção 7.4 do enunciado; Seção 3 do README preenchida com o dicionário de inconsistências.
 
 **Desafios e adaptações:**
+
 - **Falso positivo no encoding:** a primeira versão do script usava `"Ã"` isolado como padrão de detecção, gerando ~300 falsos positivos em palavras legítimas ("SÃO", "AÇÃO", "MUNICÍPIO"). Corrigido removendo o padrão isolado e mantendo só combinações de dupla codificação (`Ã§`, `Ã£`, `Ã©`...).
 - **Parser de data incompleto:** `pd.to_datetime(dayfirst=True)` só reconhecia 1,9% dos resultados (310 de 15.896). Implementada `parse_data_robusto()` com 16 variações de formato, elevando a cobertura para **100%** e revelando **1.056 datas invertidas** (contra 142 no parser ingênuo — número anterior era enviesado).
 - **Classificação monetária subestimada:** os regex estritos (`\d,\d{2}$`) só casavam valores curtos. Refinado com `.*` no prefixo e `\d+` no final, alcançando **classificação 100% completa** (vírgula + ponto = total em todas as 6 colunas).
 
 **Aprendizado:** *bugs* de diagnóstico são **mais perigosos que *bugs* de produção** — eles enviesam as decisões seguintes. A regra "vírgula + ponto = total" foi adotada como critério de validação.
 
-#### Fase 2 — Engenharia de Dados (Sprints 2 e 3) — em andamento
+---
+
+#### Fase 2 — Engenharia de Dados (Sprints 2 e 3) — concluída
 
 ##### Sprint 2 — Limpeza e Sanitização
 
 **O que foi planejado:** completar `src/limpeza.py` (kit do professor) com funções de limpeza de texto, documentos, números e datas.
 
 **O que foi entregue:**
+
 - `src/limpeza.py` 100% preenchido (19 lacunas resolvidas).
 - Autoteste: **54/54 exemplos certos** na primeira execução.
 
 **Desafios e adaptações:**
+
 - **Ambiguidade do `"0"`:** o número pode ser nulo (em campo de texto) ou valor legítimo (em campo numérico). Solução: parâmetro `zero_eh_nulo` controla o comportamento por contexto. Documentado na Seção 4.1.2.
 - **Encoding resiliente:** a função `consertar_acento()` usa `try/except` — funciona tanto em textos corrompidos (`AquisiÃ§Ã£o` → `Aquisição`) quanto em textos já corretos (`Aquisição` permanece igual).
 - **Datas em 6 formatos + corte de hora:** `converter_data()` testa os 6 formatos-base do arquivo do professor e usa `[:10]` para descartar a hora — decisão alinhada com o tipo `DATE` do PostgreSQL.
 
 **Aprendizado:** a estratégia de "uma função por vez, testada antes de avançar" (conforme sugerido pelo próprio kit) evitou retrabalho. Todos os 54 testes passaram na **primeira execução** — sinal de que as 19 lacunas foram preenchidas com o conceito entendido, não por tentativa.
 
+---
+
 ##### Sprint 3 — Modelagem e Regras de Negócio
 
 **O que foi planejado:** implementar as 12 regras de negócio em `src/montar_tabelas.py` e bater todos os números da Prova Real (Anexo 8).
 
 **O que foi entregue:**
+
 - `src/montar_tabelas.py` 100% implementado (31 lacunas resolvidas).
 - **Prova Real batida em todos os 10 números** do Anexo 8, na **primeira execução**.
 
 **Desafios e adaptações:**
 
--**COMPLETAR (COLOCAR 99)**
+- **`config.py` e o `ImportError` inicial:** ao rodar `python src/montar_tabelas.py` (execução direta), o Python adiciona `src/` ao `sys.path[0]` — e `from src import config` falha com `ModuleNotFoundError: No module named 'src'`. O erro **não era ausência do arquivo**: o `config.py` oficial do kit (com `PASTA_RAIZ`, `PASTA_SQL`, `carregar_env()` e `PG_CONFIG`) já estava em `src/` desde o commit `c54a9fb`. A solução foi usar o **modo módulo** (`python -m src.montar_tabelas`), que adiciona a raiz do projeto ao `sys.path` e encontra o pacote `src` corretamente. Decisão registrada na docstring do próprio arquivo, que instrui: *"COMO RODAR: python -m src.montar_tabelas"*.
+- **Erro de sintaxe no `dias_ciclo`:** a expressão `(h - p).days if ... else None` foi digitada com duplicação inicial (`(h - p).(h - p).days`), causando `SyntaxError`. Corrigido em 1 linha — o erro só apareceu na execução, não no editor, porque envolvia encadeamento de `if/else` em list comprehension.
+- **99 itens rejeitados — critérios da regra 4:** a Prova Real confirma **exatamente 99 itens** descartados antes da carga na Fato. Os 7 critérios (cada item conta apenas o **primeiro** que dispara) estão detalhados na **Seção 4.2.5** e cobrem: quantidade ≤ 0; valor unitário estimado ≤ 0; valor unitário homologado ≤ 0; orçamento sigiloso; valor total estimado < R$ 1; valor total homologado > 1.000× o estimado; ou qualquer valor total > R$ 1 trilhão (limite para não estourar o tipo `DECIMAL(18,2)` do PostgreSQL).
+- **Sprint 3 atravessou o fim de semana** (23/10 sexta → 26/10 segunda), exigindo divisão interna: regras 1-5 na sexta, regras 6-12 na segunda.
 
-**Aprendizado:** a **estratégia de implementar as 12 regras em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
+**Aprendizado:** a estratégia de implementar as 12 regras **em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
 
 [⬆ Voltar ao índice](#-índice)
 
