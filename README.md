@@ -31,10 +31,11 @@ Esteira analítica ponta a ponta (End-to-End) para auditoria e inteligência de 
   - [4.1. Sanitização em Python (`src/limpeza.py`)](#41-sanitizacao)
   - [4.2. Regras de negócio da Controladoria](#42-regras-negocio)
 - [5. Modelagem Dimensional (Star Schema)](#5-modelagem)
-- [6. Planejamento em Sprints e Lições Aprendidas](#6-sprints)
-  - [6.1. Histórico de Sprints](#61-historico)
-- [7. Guia de Execução](#7-execucao)
-- [8. Melhorias Futuras e Vídeo de Defesa](#8-melhorias)
+- [6. Perguntas de Negócio e Respostas](#6-perguntas)
+- [7. Planejamento em Sprints e Lições Aprendidas](#7-sprints)
+  - [7.1. Histórico de Sprints](#71-historico)
+- [8. Guia de Execução](#8-execucao)
+- [9. Melhorias Futuras e Vídeo de Defesa](#9-melhorias)
 
 ---
 
@@ -48,7 +49,6 @@ Esteira analítica ponta a ponta (End-to-End) para auditoria e inteligência de 
 ---
 
 <a id="2-arquitetura"></a>
-
 ## 2. Arquitetura da Solução e Tecnologias
 
 *[A preencher na Fase 1]*
@@ -335,16 +335,13 @@ Todos os formatos monetários identificados na Seção 3 são convertidos corret
 
 Os 8 formatos detectados na auditoria descrita na Seção 3 são cobertos pelos 6 formatos-base (combinados com/sem hora). Datas invertidas (1.056 casos) serão tratadas na Sprint 3 pela **regra 7** do enunciado.
 
-#### 4.1.6. Limitações conhecidas (alimentam a Seção 8 — Melhorias Futuras)
+#### 4.1.6. Limitações conhecidas (alimentam a Seção 9 — Melhorias Futuras)
 
 - **`padronizar_nome()`** insere espaço ao redor de qualquer `-`. Resolve `"Pregão-Eletrônico"` → `"PREGÃO - ELETRÔNICO"`, mas alteraria códigos com hífen interno (ex: `"ABC-123"` → `"ABC - 123"`). Para o escopo atual (nomes de órgão/fornecedor), é aceitável.
 - **`remover_invisiveis()`** usa caracteres zero-width literais no código-fonte (invisíveis no editor). Alternativa mais robusta: usar `\u200b` explícito como escape Unicode. Não impacta o resultado; é questão de manutenibilidade.
 
 <a id="42-regras-negocio"></a>
-
 ### 4.2. Regras de negócio da Controladoria (`src/montar_tabelas.py`)
-
-*[A preencher na Sprint 3 — implementação das 12 regras de negócio]*
 
 #### 4.2.1. Decisões herdadas da auditoria (Sprint 1) e da limpeza (Sprint 2)
 
@@ -435,7 +432,7 @@ Foram rejeitados **99 itens** pelos 7 critérios da regra 4 do enunciado. Cada i
 | 6 | Valor total homologado mais de 1.000× o valor total estimado |
 | 7 | Valor total (estimado ou homologado) acima de R$ 1 trilhão — limite definido para não estourar o tipo `DECIMAL(18,2)` do PostgreSQL na Sprint 4 |
 
-Os itens rejeitados **não são carregados na tabela Fato**, a verificação é feita pelo total (99, conforme Anexo 8) são apenas contabilizados.
+Os itens rejeitados **não são carregados na tabela Fato** — a verificação é feita pelo total (99, conforme Anexo 8); são apenas contabilizados.
 
 **Aprendizado:** a Prova Real foi batida na **primeira execução** após corrigir 1 erro de sintaxe (duplicação no `dias_ciclo`). A estratégia de implementar as 12 regras em ordem de dependência (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) evitou retrabalho.
 
@@ -446,83 +443,332 @@ Os itens rejeitados **não são carregados na tabela Fato**, a verificação é 
 <a id="5-modelagem"></a>
 ## 5. Modelagem Dimensional (Star Schema)
 
-*[A preencher na Fase 3 — explicação do modelo e link para a imagem do diagrama (`docs/img/diagrama.png`)]*
+A camada analítica segue o modelo **Star Schema** (1 tabela Fato + 4 Dimensões), implementado no PostgreSQL pela Sprint 4.
+
+### 5.1. Diagrama
+
+![Diagrama do Star Schema](docs/img/diagrama.png)
+
+### 5.2. Estrutura
+
+| Tabela | Papel | Linhas | Chave natural (UNIQUE) | Chave substituta (PK) |
+| :--- | :--- | ---: | :--- | :--- |
+| `fato_item_contratado` | **FATO** — o que foi comprado | 6.126 | `numero_controle_pncp` + `numero_item` | `sk_fato` (SERIAL) |
+| `dim_orgao` | Quem comprou | 363 | `cnpj_orgao` | `sk_orgao` |
+| `dim_fornecedor` | Quem vendeu | 2.652 | `ni_fornecedor` | `sk_fornecedor` |
+| `dim_modalidade` | Como comprou | 7 | `modalidade_id` | `sk_modalidade` |
+| `dim_localidade` | Onde | 27 | `uf_sigla` | `sk_localidade` |
+
+### 5.3. Decisões de modelagem
+
+- **Surrogate keys (`sk_*`):** chaves substitutas inteiras, geradas em ordem crescente no `montar_tabelas.py`. Isolam a Fato das chaves naturais (CNPJ, sigla de UF), que podem mudar de formato;
+- **Fato no grão do item:** 1 linha por `numero_controle_pncp` + `numero_item` (constraint `UNIQUE` composta);
+- **Integridade referencial:** 4 FKs da Fato apontam para as 4 Dimensões, todas `NOT NULL`. A Prova Real confirmou que **não há FK órfã** — a linha `-1` ("Não informado") **não foi necessária**;
+- **Tipos de dados:**
+  - `DECIMAL(18,2)` para valores monetários totais
+  - `DECIMAL(18,4)` para preços unitários e quantidades
+  - `DATE` para datas
+  - `SMALLINT` para a flag `comparavel` (0 ou 1)
+- **CHECKs de integridade:** `quantidade > 0`; todos os valores `>= 0`; `comparavel IN (0, 1)`.
+- **Campos vazios:** `data_homologacao`, `economia_valor` e `dias_ciclo` são `NULL` quando a regra de negócio anula o dado (230 itens sem ciclo, itens não comparáveis);
+- **Tempo no Power BI:** a dimensão Calendário **não é tabela do banco** — é criada em DAX no Power BI (Sprint 6), relacionada a `data_publicacao` e `data_homologacao` via `USERELATIONSHIP`.
 
 [⬆ Voltar ao índice](#-índice)
 
 ---
 
-<a id="6-sprints"></a>
-## 6. Planejamento em Sprints e Lições Aprendidas
+<a id="6-perguntas"></a>
+## 6. Perguntas de Negócio e Respostas
+
+As respostas abaixo foram extraídas com as queries de `sql/02_perguntas.sql` e validadas contra a Prova Real (Anexo 8 do enunciado).
+
+### 6.1. Resumo
+
+| # | Pergunta | Resposta | Query |
+| :---: | :--- | :--- | :--- |
+| 1 | Economia global | **14,46%** / **R$ 992,86 mi** | `P1` |
+| 2 | Concentração de fornecedores | Top 10 = **41,43%** do orçamento | `P2a`, `P2b` |
+| 3 | Eficácia por modalidade | Pregão Eletrônico: **24,02%** de deságio | `P3` |
+| 4 | Ciclo de compras | Média **48,1 dias**, máximo **611** | `P4` |
+| 5 | Distribuição regional | CO concentra **44,25%**; Norte tem **21,43%** de deságio | `P5a`, `P5b` |
+| 6 | Perfil do gasto | Obras = **60,82%** do volume | `P6` |
+
+### 6.2. P1 — Economia global do Poder Público
+
+> *"Qual é o percentual e o valor financeiro nominal economizado pelo governo (diferença entre valor estimado e valor homologado)?"*
+
+- **Valor estimado comparável:** R$ 6.867.663.469,91
+- **Economia nominal:** **R$ 992.861.686,95**
+- **Economia %:** **14,46%**
+
+**Interpretação:** para cada R$ 100 estimados em itens comparáveis, o governo pagou R$ 85,54 — economia de **R$ 14,46 por R$ 100**. Dos R$ 8,04 bi de volume homologado, quase **R$ 1 bilhão** foi economizado.
+
+### 6.3. P2 — Concentração e risco de fornecedores
+
+> *"Quem são os maiores fornecedores em volume financeiro e qual percentual do orçamento público está concentrado neles?"*
+
+**Top 5 fornecedores:**
+
+| Fornecedor | Volume (R$) | % do total |
+| :--- | ---: | ---: |
+| NOW SEGUROS SA | 1.060.000.000,00 | 13,18% |
+| CONSTRUTORA CIDADE LTDA | 524.935.394,97 | 6,53% |
+| BANCO BRADESCO S.A. | 379.194.320,07 | 4,71% |
+| CONSTRUTORA NORTE BRASIL LTDA | 335.401.470,80 | 4,17% |
+| LCM CONSTRUÇÃO E COMÉRCIO S.A. | 228.885.493,53 | 2,85% |
+
+- **Top 10 concentram 41,43%** do orçamento (R$ 3.332.484.029,86 de R$ 8,04 bi).
+- **2.642 fornecedores menores** dividem os 58,57% restantes.
+
+**Interpretação:** a concentração em 10 fornecedores (41% do gasto) é um **sinal de risco** para a Controladoria — dependência de poucos vendedores pode reduzir a competitividade futura. **7 dos 10 maiores são construtoras**, consistente com o perfil do gasto (P6).
+
+### 6.4. P3 — Eficácia por modalidade
+
+> *"Quais modalidades licitatórias trazem maior deságio/economia e quais concentram o maior volume de recursos?"*
+
+| Modalidade | Volume (R$) | Deságio |
+| :--- | ---: | ---: |
+| Concorrência Eletrônica | 4.700.493.122,98 | 14,27% |
+| Credenciamento | 2.141.301.557,16 | **NULL** *(esperado)* |
+| Pregão Eletrônico | 502.223.491,28 | **24,02%** ⭐ |
+| Concorrência Presencial | 444.752.757,18 | 6,79% |
+| Inexigibilidade | 213.365.238,19 | 8,77% |
+| Dispensa | 39.887.350,44 | 4,49% |
+| Pregão Presencial | 2.475.288,51 | 0,02% |
+
+**Interpretação:** há uma **inversão entre volume e deságio**. Pregão Eletrônico tem o **maior deságio (24,02%)**, mas absorve apenas 6% do volume. As modalidades de maior volume — Concorrência Eletrônica (58%) e Credenciamento (27%) — têm deságio **menor** (14,27%) ou **estruturalmente incalculável** (Credenciamento). **A Controladoria tem espaço para ampliar a competitividade onde o dinheiro está.**
+
+### 6.5. P4 — Tempo do ciclo de compras
+
+> *"Qual a duração média (em dias) entre o lançamento do edital e a sua homologação final, segmentada por órgão?"*
+
+- **Ciclo médio geral:** **48,1 dias**
+- **Ciclo máximo:** **611 dias** (COMANDO DO EXÉRCITO)
+- **Órgão mais lento (com ≥ 5 itens):** UFCG — 266,3 dias
+- **Itens sem ciclo:** 230 (homologação anterior à publicação — regra 7)
+
+**Extremos:**
+
+| Órgão | Itens com ciclo | Ciclo médio |
+| :--- | ---: | ---: |
+| UNIVERSIDADE FEDERAL DE CAMPINA GRANDE | 16 | **266,3 dias** |
+| DNIT | 62 | 156,2 dias |
+| COMANDO DO EXÉRCITO | 1.200 | 34,3 dias |
+| COMANDO DA MARINHA | 453 | 35,3 dias |
+
+**Interpretação:** há uma **desigualdade operacional de ~600× entre órgãos**. Os **3 Comandos Militares** (Exército, Marinha, Aeronáutica) são os maiores compradores (33% dos itens) e operam **abaixo da média** (34-56 dias). O **DNIT** (obras) é 4× mais lento que a média — e obras representam 60,82% do gasto (P6). **A lentidão em obras é o gargalo estrutural.**
+
+### 6.6. P5 — Distribuição regional
+
+> *"Quais estados e regiões concentram as maiores despesas e quais apresentam os melhores indicadores de desconto?"*
+
+**Top 5 UFs por volume:**
+
+| UF | Região | Volume (R$) | Deságio |
+| :--- | :--- | ---: | ---: |
+| DF | Centro-Oeste | 3.135.638.456,35 | 15,90% |
+| RS | Sul | 820.584.056,64 | 7,18% |
+| RJ | Sudeste | 461.925.602,27 | 11,57% |
+| PI | Nordeste | 408.389.525,89 | **5,98%** ⚠️ |
+| SP | Sudeste | 393.783.392,48 | 9,22% |
+
+**Agregação por região:**
+
+| Região | Volume (R$) | % | Deságio |
+| :--- | ---: | ---: | ---: |
+| **Centro-Oeste** | 3.559.879.991,73 | **44,25%** | 17,02% |
+| Nordeste | 1.850.420.285,02 | 23,00% | 14,18% |
+| Sudeste | 1.083.309.811,49 | 13,47% | 11,62% |
+| **Sul** | 1.021.624.955,41 | 12,70% | **7,96%** ⚠️ |
+| **Norte** | 529.263.762,09 | 6,58% | **21,43%** ⭐ |
+
+**Interpretação:** há **inversão geográfica** entre volume e deságio. **Centro-Oeste concentra 44,25% do orçamento** (DF = sede dos órgãos federais) mas tem deságio médio. **Norte tem o maior deságio (21,43%)** com o menor volume — sinal de **mais competição local** ou **menor concentração de fornecedores**. **Sul é o caso mais crítico**: R$ 1,02 bi com deságio de apenas 7,96% (metade da média nacional).
+
+**Custo de oportunidade:** se o Sul tivesse o deságio médio nacional (14,46%), economizaria ~**R$ 66 milhões adicionais**.
+
+### 6.7. P6 — Perfil dos gastos
+
+> *"Como os recursos se distribuem entre bens, serviços e obras e engenharia?"*
+
+| Perfil | Itens | Volume (R$) | % Itens | % Volume |
+| :--- | ---: | ---: | ---: | ---: |
+| **Obras e engenharia** | 967 | 4.892.362.732,70 | 15,8% | **60,82%** |
+| **Serviços** | 1.849 | 2.940.950.885,18 | 30,2% | 36,56% |
+| **Bens** | 3.310 | 211.185.187,86 | 54,0% | **2,63%** |
+
+**Interpretação:** **967 itens de obras consomem quase 2/3 do orçamento**, enquanto 3.310 itens de bens (o dobro em quantidade) consomem apenas 2,63%. **Obras são o gargalo financeiro** — e combinam com P3 (Concorrência Eletrônica, modalidade de obras, lidera o volume) e P4 (DNIT, órgão de obras, é 4× mais lento). **A auditoria da Controladoria deve priorizar obras: é onde o dinheiro está, onde o ciclo é maior e onde o deságio é menor.**
+
+[⬆ Voltar ao índice](#-índice)
+
+---
+
+<a id="7-sprints"></a>
+## 7. Planejamento em Sprints e Lições Aprendidas
 
 O projeto foi executado em **5 Fases (Marcos)** e **8 Micro-Sprints**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026), sem codificação em fins de semana. Cada Sprint tem um **MVP** e um **Critério de Aceite** explícitos, registrados no Trello.
 
 ![Sprints do projeto](docs/img/sprints.png)
 
-<a id="61-historico"></a>
-### 6.1. Histórico de Sprints
+<a id="71-historico"></a>
+### 7.1. Histórico de Sprints
 
 #### Fase 1 — Fundação e Auditoria (Sprints 0 e 1)
 
 Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias nos CSVs brutos.
 
 **Entregas:**
+
 - **Sprint 0:** repositório estruturado, `.gitignore` protegendo `.env`, README esqueleto, primeiro commit na branch `feat/fase-1-fundacao`.
 - **Sprint 1:** `src/auditoria.py` com 9 funções cobrindo as 4 perguntas da Seção 7.4 do enunciado; Seção 3 do README preenchida com o dicionário de inconsistências.
 
 **Desafios e adaptações:**
+
 - **Falso positivo no encoding:** a primeira versão do script usava `"Ã"` isolado como padrão de detecção, gerando ~300 falsos positivos em palavras legítimas ("SÃO", "AÇÃO", "MUNICÍPIO"). Corrigido removendo o padrão isolado e mantendo só combinações de dupla codificação (`Ã§`, `Ã£`, `Ã©`...).
 - **Parser de data incompleto:** `pd.to_datetime(dayfirst=True)` só reconhecia 1,9% dos resultados (310 de 15.896). Implementada `parse_data_robusto()` com 16 variações de formato, elevando a cobertura para **100%** e revelando **1.056 datas invertidas** (contra 142 no parser ingênuo — número anterior era enviesado).
 - **Classificação monetária subestimada:** os regex estritos (`\d,\d{2}$`) só casavam valores curtos. Refinado com `.*` no prefixo e `\d+` no final, alcançando **classificação 100% completa** (vírgula + ponto = total em todas as 6 colunas).
 
 **Aprendizado:** *bugs* de diagnóstico são **mais perigosos que *bugs* de produção** — eles enviesam as decisões seguintes. A regra "vírgula + ponto = total" foi adotada como critério de validação.
 
-#### Fase 2 — Engenharia de Dados (Sprints 2 e 3) — em andamento
+---
+
+#### Fase 2 — Engenharia de Dados (Sprints 2 e 3) — concluída
 
 ##### Sprint 2 — Limpeza e Sanitização
 
 **O que foi planejado:** completar `src/limpeza.py` (kit do professor) com funções de limpeza de texto, documentos, números e datas.
 
 **O que foi entregue:**
+
 - `src/limpeza.py` 100% preenchido (19 lacunas resolvidas).
 - Autoteste: **54/54 exemplos certos** na primeira execução.
 
 **Desafios e adaptações:**
+
 - **Ambiguidade do `"0"`:** o número pode ser nulo (em campo de texto) ou valor legítimo (em campo numérico). Solução: parâmetro `zero_eh_nulo` controla o comportamento por contexto. Documentado na Seção 4.1.2.
 - **Encoding resiliente:** a função `consertar_acento()` usa `try/except` — funciona tanto em textos corrompidos (`AquisiÃ§Ã£o` → `Aquisição`) quanto em textos já corretos (`Aquisição` permanece igual).
 - **Datas em 6 formatos + corte de hora:** `converter_data()` testa os 6 formatos-base do arquivo do professor e usa `[:10]` para descartar a hora — decisão alinhada com o tipo `DATE` do PostgreSQL.
 
 **Aprendizado:** a estratégia de "uma função por vez, testada antes de avançar" (conforme sugerido pelo próprio kit) evitou retrabalho. Todos os 54 testes passaram na **primeira execução** — sinal de que as 19 lacunas foram preenchidas com o conceito entendido, não por tentativa.
 
+---
+
 ##### Sprint 3 — Modelagem e Regras de Negócio
 
 **O que foi planejado:** implementar as 12 regras de negócio em `src/montar_tabelas.py` e bater todos os números da Prova Real (Anexo 8).
 
 **O que foi entregue:**
+
 - `src/montar_tabelas.py` 100% implementado (31 lacunas resolvidas).
 - **Prova Real batida em todos os 10 números** do Anexo 8, na **primeira execução**.
 
 **Desafios e adaptações:**
 
--**COMPLETAR (COLOCAR 99)**
+- **`config.py` e o `ImportError` inicial:** ao rodar `python src/montar_tabelas.py` (execução direta), o Python adiciona `src/` ao `sys.path[0]` — e `from src import config` falha com `ModuleNotFoundError: No module named 'src'`. O erro **não era ausência do arquivo**: o `config.py` oficial do kit (com `PASTA_RAIZ`, `PASTA_SQL`, `carregar_env()` e `PG_CONFIG`) já estava em `src/` desde o commit `c54a9fb`. A solução foi usar o **modo módulo** (`python -m src.montar_tabelas`), que adiciona a raiz do projeto ao `sys.path` e encontra o pacote `src` corretamente. Decisão registrada na docstring do próprio arquivo, que instrui: *"COMO RODAR: python -m src.montar_tabelas"*.
+- **Erro de sintaxe no `dias_ciclo`:** a expressão `(h - p).days if ... else None` foi digitada com duplicação inicial (`(h - p).(h - p).days`), causando `SyntaxError`. Corrigido em 1 linha — o erro só apareceu na execução, não no editor, porque envolvia encadeamento de `if/else` em list comprehension.
+- **99 itens rejeitados — critérios da regra 4:** a Prova Real confirma **exatamente 99 itens** descartados antes da carga na Fato. Os 7 critérios (cada item conta apenas o **primeiro** que dispara) estão detalhados na **Seção 4.2.5** e cobrem: quantidade ≤ 0; valor unitário estimado ≤ 0; valor unitário homologado ≤ 0; orçamento sigiloso; valor total estimado < R$ 1; valor total homologado > 1.000× o estimado; ou qualquer valor total > R$ 1 trilhão (limite para não estourar o tipo `DECIMAL(18,2)` do PostgreSQL).
+- **Sprint 3 atravessou o fim de semana** (23/10 sexta → 26/10 segunda), exigindo divisão interna: regras 1-5 na sexta, regras 6-12 na segunda.
 
-**Aprendizado:** a **estratégia de implementar as 12 regras em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
+**Aprendizado:** a estratégia de implementar as 12 regras **em ordem de dependência** (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) permitiu **bater a Prova Real na primeira execução**. Se as regras fossem implementadas fora de ordem, um erro em uma etapa inicial contaminaria todas as etapas seguintes — e o diagnóstico seria muito mais trabalhoso.
+
+---
+
+#### Fase 3 — Banco de Dados (Sprints 4 e 5) — concluída
+
+##### Sprint 4 — Banco de Dados e Carga
+
+**O que foi planejado:** escrever o `sql/01_criar_banco.sql` (Star Schema: 1 Fato + 4 Dimensões), completar as 6 lacunas do `src/carregar.py` e validar as 5 contagens contra a Prova Real.
+
+**O que foi entregue:**
+
+- `sql/01_criar_banco.sql` criado do zero — 5 tabelas com PKs, FKs, UNIQUEs e CHECKs.
+- `src/carregar.py` com as 6 lacunas preenchidas (`inserir_em_lote`, `executar_script`, `"Int64"`, `fato_item_contratado`, `COUNT(*)`).
+- **Carregamento validado:** as 5 contagens batem exatamente com o Anexo 8.
+
+| Tabela | Carregado | Prova Real |
+| :--- | ---: | ---: |
+| `fato_item_contratado` | 6.126 | 6.126 |
+| `dim_orgao` | 363 | 363 |
+| `dim_fornecedor` | 2.652 | 2.652 |
+| `dim_modalidade` | 7 | 7 |
+| `dim_localidade` | 27 | 27 |
+
+**Desafios e adaptações:**
+
+- **`pg_isready` não está no PATH do Windows:** a validação inicial do PostgreSQL foi feita com `Test-NetConnection -Port 5432` (porta aberta) + um teste de conexão real via Python (`psycopg2.connect` + `config.PG_CONFIG`). O `pg_isready` só está disponível se os binários do PostgreSQL estiverem no PATH — o que não é o padrão no Windows.
+- **`ImportError` no botão ▶️ do VS Code:** a execução direta (`python src/carregar.py`) falha com `ModuleNotFoundError: No module named 'src'` porque o Python adiciona `src/` ao `sys.path[0]`. A execução via **modo módulo** (`python -m src.carregar`) funciona corretamente. Decisão registrada na docstring do arquivo do kit: *"COMO RODAR: python -m src.carregar"*.
+- **Linha `-1` ("Não informado") não foi necessária:** a Seção 4.3 do enunciado indica criar a linha `-1` nas dimensões **se** houver FK órfã. A Prova Real confirmou zero FKs órfãs (as 5 contagens batem com o Anexo 8). Por isso, incluí-la faria as contagens divergirem (364, 2.653, 8, 28) — o script `01_criar_banco.sql` documenta isso com um comentário e fornece o template de INSERT caso um dia seja necessário.
+- **Tratamento de exceções via `banco.py`:** o `banco.py` do kit já implementa controle de falhas — a função `inserir_em_lote()` chama `conexao.commit()` apenas no final de cada operação, garantindo rollback implícito em caso de violação de constraint. A `carregar.py` apenas orquestra — não reimplementamos `try/except` para não duplicar o que o kit já cobre.
+- **Diagrama do Star Schema em Mermaid:** gerado em [mermaid.live](https://mermaid.live), exportado como PNG para `docs/img/diagrama.png`. O código-fonte Mermaid está versionado no README (Seção 5), permitindo regeneração futura — abordagem "Diagrams-as-Code".
+
+**Aprendizado:** validar a conexão real via Python (`psycopg2.connect`) antes de escrever o DDL evita retrabalho. O `Test-NetConnection` só confirma que a porta está aberta — não confirma credenciais nem que o banco existe. Validar com a mesma stack que o pipeline vai usar (psycopg2 + config.py) elimina surpresas.
+
+---
+
+---
+
+##### Sprint 5 — Perguntas de Negócio (SQL)
+
+**O que foi planejado:** escrever as 6 queries em `sql/02_perguntas.sql` que respondem às dores da Controladoria (Seção 4.4 do enunciado), validando cada uma contra a Prova Real (Anexo 8).
+
+**O que foi entregue:**
+
+- `sql/02_perguntas.sql` com **8 queries** (P1, P2a/P2b, P3, P4, P5a/P5b, P6).
+- **Todas as 6 perguntas validadas** contra o Anexo 8 do enunciado.
+
+| # | Pergunta | Resultado | Prova Real |
+| :---: | :--- | :--- | :--- |
+| **P1** | Economia global | **14,46%** / **R$ 992.861.686,95** | 14,46% / R$ 992.861.686,95 |
+| **P1** | Estimado comparável | **R$ 6.867.663.469,91** | R$ 6.867.663.469,91 |
+| **P2a** | Top 10 fornecedores | 10 linhas, #1 com 13,18% | *(coerência)* |
+| **P2b** | Concentração Top 10 | **41,43%** (R$ 3.332.484.029,86) | *(coerência)* |
+| **P3** | Deságio por modalidade | Credenciamento = **NULL** | NULL *(esperado)* |
+| **P4** | Ciclo máximo por órgão | **611 dias** (COMANDO DO EXÉRCITO) | 611 dias |
+| **P5a** | Distribuição por UF | 27 UFs, soma = R$ 8,04 bi | R$ 8,04 bi |
+| **P5b** | Distribuição por região | 5 regiões, soma = R$ 8,04 bi | R$ 8,04 bi |
+| **P6** | Perfil do gasto | **60,82% Obras / 36,56% Serviços / 2,63% Bens** | 60,8 / 36,6 / 2,6 |
+
+**Decisões técnicas aplicadas (Seção 4.4 do enunciado):**
+
+- **Percentual = SOMA ÷ SOMA** em todas as queries (nunca média de percentuais) — usando `NULLIF(denominador, 0)` para evitar divisão por zero.
+- **Economia só nos comparáveis:** `CASE WHEN comparavel = 1` + `SUM` (nunca `AVG` de percentuais).
+- **Credenciamento (modalidade 12):** `desagio_pct` retorna **NULL** porque não tem item comparável — comportamento esperado, conforme o enunciado.
+- **P2 (fornecedores):** `LIMIT 10` no ranking + subconsulta no denominador para o percentual do total.
+- **P4 (ciclo):** `GROUP BY o.nome_orgao` (agrupando pelo nome padronizado, não pelo CNPJ) + `COUNT(dias_ciclo)` (só itens com ciclo) + `HAVING COUNT >= 5`.
+- **P6 (perfil):** `GROUP BY perfil_gasto` direto na Fato — sem JOIN, conforme dica do enunciado.
+
+**Desafios e adaptações:**
+
+- **`current_database()` no pgAdmin:** a primeira execução falhou com `relation "fato_item_contratado" does not exist` porque o Query Tool estava conectado no banco administrativo `postgres`, não em `pncp_controladoria`. Solução: abrir o Query Tool a partir do banco correto (botão direito em `pncp_controladoria` → Query Tool). **O código SQL estava correto desde o início** — o erro era de conexão, não de sintaxe.
+- **Divisão por zero no Credenciamento:** sem `NULLIF`, a query de P3 lançaria `division by zero` porque o denominador (estimado comparável) é 0. O `NULLIF(..., 0)` devolve NULL — exatamente o comportamento esperado (o enunciado avisa: *"em Credenciamento nenhum item é comparável, então a economia % dessa modalidade fica vazia"*).
+- **Encoding quebrado na exibição do pgAdmin:** a query P3 mostrou `ConcorrÃªncia` e `PregÃ£o` no output do Query Tool — mas o dado no banco está correto (`Concorrência`, `Pregão`). É configuração do cliente SQL, não do dado. Solução para o vídeo: rodar `SET client_encoding = 'UTF8';` antes da query, ou mostrar direto no Power BI (que respeita UTF-8).
+- **Validação incremental:** cada query foi validada **individualmente** no pgAdmin (selecionando o bloco e `F5`), em vez de rodar o arquivo inteiro. Isso permitiu identificar rapidamente que o problema inicial era de conexão no banco errado — não de lógica SQL. Rodar tudo de uma vez devolveria só o último resultado e mascararia a causa real.
+
+**Achados analíticos (para o vídeo e para a Controladoria):**
+
+- **P3 + P6 combinadas:** Pregão Eletrônico tem o **maior deságio (24,02%)**, mas absorve apenas 6% do volume. Concorrência Eletrônica concentra **58% do volume** (obras), com deságio de 14,27%. **Há espaço para ampliar a competitividade onde o dinheiro está.**
+- **P4:** os **3 Comandos Militares** (Exército, Marinha, Aeronáutica) concentram 33% dos itens e operam **abaixo da média** (34-56 dias) — são os maiores compradores e os mais eficientes. O **DNIT** (obras) é 4× mais lento que a média.
+- **P5b:** o **Sul** tem R$ 1,02 bi de volume com deságio de apenas **7,96%** (metade da média nacional de 14,46%). O **Norte** tem o **maior deságio (21,43%)** com o menor volume. Há uma **inversão geográfica** entre volume e deságio.
+- **P6:** **967 itens de obras** consomem quase **2/3 do orçamento**, enquanto **3.310 itens de bens** (o dobro em quantidade) consomem **2,63%**.
+
+**Aprendizado:** a validação incremental (uma query por vez) foi decisiva. O primeiro erro (`relation does not exist`) parecia grave — mas era simplesmente o Query Tool conectado no banco errado. Se eu tivesse rodado todas as queries de uma vez, o output seria apenas o último resultado, e a causa real demoraria a ser identificada. **Validar uma pergunta por vez, comparar com a Prova Real antes de avançar** — mesma lógica da Sprint 2 ("uma função por vez") e da Sprint 4 ("validar a conexão antes do DDL").
 
 [⬆ Voltar ao índice](#-índice)
 
 ---
 
-<a id="7-execucao"></a>
-## 7. Guia de Execução (Como reproduzir)
+<a id="8-execucao"></a>
+## 8. Guia de Execução (Como reproduzir)
 
-*[A preencher na Fase 3 e finalizar na Fase 5 — passo a passo: instalar requirements, configurar `.env`, rodar scripts na ordem correta]*
+> **Nota sobre `data/processed/`:** os arquivos gerados por `src/montar_tabelas.py` (fato + 4 dimensões em CSV) **não são versionados** — estão no `.gitignore`. Eles são regeneráveis a partir do código + `data/raw/`, conforme orientação do professor. Quem clonar o repositório reproduz os arquivos rodando o pipeline.
+
+*[Passo a passo completo: instalar `requirements.txt`, configurar `.env`, rodar scripts na ordem correta — a preencher nas Sprints 4 e 5]*
 
 [⬆ Voltar ao índice](#-índice)
 
 ---
 
-<a id="8-melhorias"></a>
-## 8. Melhorias Futuras e Vídeo de Defesa
+<a id="9-melhorias"></a>
+## 9. Melhorias Futuras e Vídeo de Defesa
 
 *[A preencher na Fase 5 — link do vídeo no Google Drive]*
 
