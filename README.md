@@ -752,6 +752,25 @@ Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias
 
 **Aprendizado:** a validação incremental (uma query por vez) foi decisiva. O primeiro erro (`relation does not exist`) parecia grave — mas era simplesmente o Query Tool conectado no banco errado. Se eu tivesse rodado todas as queries de uma vez, o output seria apenas o último resultado, e a causa real demoraria a ser identificada. **Validar uma pergunta por vez, comparar com a Prova Real antes de avançar** — mesma lógica da Sprint 2 ("uma função por vez") e da Sprint 4 ("validar a conexão antes do DDL").
 
+##### Sprint 6 — Dashboard Power BI
+
+**O que foi planejado:** construir o dashboard executivo com as 6 páginas (storytelling), tabela Calendário, 15 medidas DAX, menu de navegação e tooltips.
+
+**O que foi entregue:**
+- `powerbi/dashboard.pbix` com as 6 páginas finalizadas.
+- Tabela Calendário dinâmica em DAX (`CALENDARAUTO`), ordenação correta e `USERELATIONSHIP`.
+- 16 medidas DAX na tabela `_Medidas`, organizadas por pastas (0. Base, 1. Economia, etc.).
+- Menu lateral retrátil funcional (utilizando Marcadores/Bookmarks e botões de ação).
+- Tooltip personalizado na página de Fornecedores.
+- Aplicação dos princípios CRAP e Design System (Dark Tech).
+- Extras implementados: Itens com Sobrepreço, Volume Acumulado no Ano e Variação Mensal %.
+
+**Desafios e adaptações:**
+- **Bug do Menu Retrátil (Desktop):** A versão mais recente do Power BI Desktop (Setembro/2026) apresentou um bug de renderização que impedia o funcionamento dos Marcadores (Bookmarks). A solução foi fazer o downgrade para a versão de Julho/2026 (2.156.951.0), que restaurou a funcionalidade.
+- **Segurança:** As permissões de credenciais foram limpas antes do commit do arquivo `.pbix`.
+
+**Aprendizado:** A construção do design system (CRAP) foi fundamental para dar coesão às 6 páginas. O domínio de recursos avançados, como Marcadores e Tooltips, elevou a experiência do usuário (UX) do relatório.
+
 [⬆ Voltar ao índice](#-índice)
 
 ---
