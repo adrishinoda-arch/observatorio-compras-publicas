@@ -752,6 +752,10 @@ Realizados preparação da infraestrutura do projeto e diagnóstico de anomalias
 
 **Aprendizado:** a validação incremental (uma query por vez) foi decisiva. O primeiro erro (`relation does not exist`) parecia grave — mas era simplesmente o Query Tool conectado no banco errado. Se eu tivesse rodado todas as queries de uma vez, o output seria apenas o último resultado, e a causa real demoraria a ser identificada. **Validar uma pergunta por vez, comparar com a Prova Real antes de avançar** — mesma lógica da Sprint 2 ("uma função por vez") e da Sprint 4 ("validar a conexão antes do DDL").
 
+---
+
+#### Fase 4 — Visualização | Power BI (Sprint 6)
+
 ##### Sprint 6 — Dashboard Power BI
 
 **O que foi planejado:** construir o dashboard executivo com as 6 páginas (storytelling), tabela Calendário, 15 medidas DAX, menu de navegação e tooltips.
