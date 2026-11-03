@@ -985,7 +985,7 @@ As decisões técnicas mais importantes do projeto, o contexto em que foram toma
 [⬆ Voltar ao índice](#indice)
 
 <a id="9-lgpd"></a>
-<a id="9-lgpd"></a>
+
 ## 9. Segurança da Informação e LGPD
 
 Apesar de os dados de contratações públicas serem de transparência obrigatória, o projeto adotou práticas para garantir a segurança, a governança e a conformidade:
@@ -1118,7 +1118,7 @@ Abaixo está a defesa técnica do projeto, simulando um Review de Sprint executi
 4. A gestão ágil, as lições aprendidas e a resolução de bugs.
 
 **Assista à defesa técnica no Google Drive:**
-[Clique aqui para assistir ao vídeo de apresentação](COLE_AQUI_O_LINK_DO_GOOGLE_DRIVE)
+[Clique aqui para assistir ao vídeo de apresentação](https://drive.google.com/file/d/1I5iDnG_x0pqJadcTShBPT9ODzH8WtysT/view?usp=sharing)
 
 > **Dica:** o vídeo está em formato 16:9, com permissão pública de leitor, e cobre os 5 blocos exigidos: apresentação pessoal, pipeline Python, arquitetura PostgreSQL, dashboard Power BI e planejamento/lições aprendidas.
 
