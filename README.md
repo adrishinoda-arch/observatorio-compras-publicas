@@ -59,7 +59,8 @@ Esteira analítica ponta a ponta (*End-to-End*) para auditoria e inteligência d
 - [10. Limitações do Estudo](#10-limitacoes)
 - [11. Guia de Execução (Como reproduzir)](#11-execucao)
 - [12. Melhorias Futuras e Vídeo de Defesa](#12-melhorias)
-- [13. Autora](#13-autora)
+- [13. Conclusão e Insights Estratégicos](#13-conclusao)
+- [14. Autoria](#14-autora)
 
 ---
 
@@ -123,16 +124,16 @@ O projeto adotou **Feature Branching por fase**, com **merge via Pull Request** 
 
 **Rollback e Segurança:** Como cada fase vive em uma branch isolada, reverter uma entrega problemática é um processo simples de `git checkout main` seguido da exclusão da branch — a `main` permanece intacta no estado anterior. A granularidade dos commits (não-squash) permite ainda um `git revert` cirúrgico de um único commit, sem desfazer a fase inteira. 
 
-A segurança do repositório é garantida por dois mecanismos: o `.gitignore` bloqueia o arquivo `.env` (garantindo que as credenciais do PostgreSQL nunca entrem no repositório) e o fluxo de PR impede pushes diretos, forçando que todo código passe por validação contra a Prova Real antes do merge. As branches de fase são mantidas após o merge para permitir auditoria retroativa no vídeo de defesa.
+A segurança do repositório é garantida por dois mecanismos: o `.gitignore` bloqueia o arquivo `.env` (garantindo que as credenciais do PostgreSQL nunca entrem no repositório) e o fluxo de PR impede pushes diretos, forçando que todo código passe por validação contra a Prova Real antes do merge. 
 
 <a id="24-estrutura"></a>
 ### 2.4. Estrutura do Repositório
 
-Para garantir a manutenibilidade e a reprodutibilidade o repositório foi organizado de forma modular:
+Para garantir a manutenibilidade e reprodutibilidade o repositório foi organizado de forma modular:
 
 ```text
 observatorio-compras-publicas/
-├── data/raw/              # CSVs brutos fornecidos pelo professor (imutáveis)
+├── data/raw/              # CSVs brutos fornecidos para o projeto (imutáveis)
 ├── docs/img/              # Imagens, diagramas e prints utilizados no README
 ├── powerbi/               # Arquivo .pbix do dashboard executivo
 ├── sql/                   # Scripts SQL de banco de dados
@@ -156,7 +157,7 @@ observatorio-compras-publicas/
 <a id="3-auditoria"></a>
 ## 3. Auditoria Inicial e Dicionário de Inconsistências
 
-Foi criado o script `src/auditoria.py` faz um raio-x **somente diagnóstico** (não altera os dados): carrega os 3 CSVs como texto (`dtype=str`) para preservar zeros à esquerda e evitar inferência equivocada de tipos. As subseções abaixo respondem, uma a uma, às 4 perguntas da Seção 7.4 do enunciado.
+Foi criado o script `src/auditoria.py` que faz um raio-x **somente diagnóstico** (não altera os dados): carrega os 3 CSVs como texto (`dtype=str`) para preservar zeros à esquerda e evitar inferência equivocada de tipos. As subseções abaixo respondem, uma a uma, às 4 perguntas da Seção 7.4 do enunciado.
 
 <a id="31-volumetria"></a>
 ### 3.1. Pergunta 1 — Volumetria e duplicidade da chave
@@ -275,11 +276,9 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 **Formatos em "Outros":** `dd.mm.aaaa` (`02.01.2025`), `aaaammdd` (`20250103`), `aaaa/mm/dd` (`2025/01/02`).
 
-> **Consequência:** a conversão exige **parser multi-formato** — implementado como `parse_data_robusto()` em `src/auditoria.py` e reaproveitado na Sprint 2.
-
 #### 3.2.5. Formatos de CNPJ/CPF
 
-| Arquivo | Coluna | Mascarado | 14 díg. | 13 díg. (zero perdido) | CPF mascarado | CPF 11 díg. |
+| Arquivo | Coluna | CNPJ mascarado | 14 díg. | 13 díg. (zero perdido) | CPF mascarado | CPF 11 díg. |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
 | `compras.csv` | `cnpj_orgao` | 176 | 1.789 | **10** | — | **3** |
 | `resultados.csv` | `ni_fornecedor` | 1.239 | 9.911 | **175** | 392 | 3.981 |
@@ -326,8 +325,6 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 
 **Parser utilizado:** `parse_data_robusto()` tenta sequencialmente **16 variações** (8 formatos-base × combinações com/sem hora e com/sem segundos), até esgotar. Os **8 formatos-base** observados na base são: ISO 8601 com `T`, ISO puro, `dd/mm/aaaa`, `dd/mm/aaaa hh:mm`, `dd-mm-aaaa`, `dd.mm.aaaa`, `aaaammdd` e `aaaa/mm/dd` — todos cobertos pelo parser, o que garante **100% de cobertura** (15.896 de 15.896).
 
-**Impacto previsto na Sprint 3:** os 1.056 resultados com datas invertidas não correspondem, necessariamente, a 1.056 itens sem ciclo. Após a **regra 2** (escolher o vencedor por item), apenas os itens cujo **vencedor** tem `data_resultado` invertida perderão a data de homologação.
-
 <a id="35-sintese"></a>
 ### 3.5. Síntese para a Sprint 2
 
@@ -337,7 +334,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 | **CNPJ com zero perdido** | `cnpj_orgao` (10), `ni_fornecedor` (175) | `zfill(14)` após limpeza |
 | **CPF em campo de órgão** | `cnpj_orgao` (3) | Marcar e documentar; tratar como "não informado" na Fase 3 |
 | **Moeda: `R$`, vírgula, ponto** | 6 colunas monetárias | Normalizar pela regra do enunciado (último símbolo = decimal); validar que `vírgula + ponto = total` |
-| **Datas em 8 formatos** | 4 colunas | `parse_data_robusto()` (já implementado) |
+| **Datas em 8 formatos** | 4 colunas | `parse_data_robusto()` (transformar temporariamente as strings em objetos de data (datetime) dentro da memória RAM, somente para diagnóstico) |
 | **Nulos disfarçados** | 6 colunas | Substituir por `NaN`/`None` **após** classificar tipo |
 | **`"0"` em campo de texto** | `processo`, `modo_disputa`, `situacao_item`, `porte` | Tratar como nulo **apenas** nessas colunas |
 | **Encoding quebrado** | 5 colunas de texto | Reprocessar como `latin-1` → `utf-8` |
@@ -352,7 +349,7 @@ A base mistura **prefixo `R$`**, **vírgula decimal** e **ponto decimal** na **m
 <a id="41-sanitizacao"></a>
 ### 4.1. Sanitização em Python (`src/limpeza.py`)
 
-O módulo `src/limpeza.py` foi concluído com **54/54 testes passando**. Cada função resolve uma classe de inconsistência identificada na Seção 3.
+No módulo `src/limpeza.py`, cada função resolve uma classe de inconsistência identificada na Seção 3.
 
 #### 4.1.1. Limpeza de texto
 
@@ -482,7 +479,7 @@ O script `src/montar_tabelas.py` foi implementado com sucesso: **todos os 10 nú
 | 1. Grão da fato | `numero_controle_pncp` + `numero_item` (garantido na Etapa 9 pelo `drop_duplicates`) |
 | 2. Um vencedor por item | Filtrar cancelados → ordenar por `ordem` e `sequencial` → `drop_duplicates` mantém o 1º |
 | 3. Só itens com resultado | `merge(how="inner")` — 6.225 itens com resultado (852 sem resultado ficaram fora) |
-| 4. Itens rejeitados | 99 rejeitados (quantidade ≤ 0, estimado/homologado ≤ 0, sigiloso, valor < R$ 1, hom > 1000x est, > R$ 1 tri) |
+| 4. Itens rejeitados | 99 rejeitados (quantidade ≤ 0, estimado/homologado ≤ 0, sigiloso, valor < R$ 1, hom > 1000x estimado, > R$ 1 tri) |
 | 5. Valores | `valor_total = valor_unitario × quantidade` (usando quantidade homologada quando > 0) |
 | 6. Comparável e economia | `modalidade_id != 12` E razão entre 0,1 e 10 → 5.457 comparáveis; economia só onde comparável |
 | 7. Cronologia | Homologação anterior à publicação → `data_homologacao = None` (230 itens sem ciclo) |
@@ -511,8 +508,6 @@ Foram rejeitados **99 itens** pelos 7 critérios da regra 4 do enunciado. Cada i
 > **Distinção importante (Regra 3 × Regra 4):** os **852 itens sem resultado** são descartados pela **regra 3** (merge `inner`) e **não contam como rejeitados** pela Prova Real. A Prova Real confere apenas os **99 itens rejeitados** pela **regra 4**. São dois funis distintos: os 852 saem **antes** (por não terem resultado homologado); os 99 saem **depois** (por terem dados impossíveis, mesmo tendo resultado). Somar os dois (951) seria um erro conceitual.
 
 Os itens rejeitados **não são carregados na tabela Fato** — a verificação é feita pelo total (99, conforme Anexo 8); são apenas contabilizados.
-
-**Aprendizado:** a Prova Real foi batida na **primeira execução** após corrigir 1 erro de sintaxe (duplicação no `dias_ciclo`). A estratégia de implementar as 12 regras em ordem de dependência (limpeza → vencedor → merge → valores → rejeição → comparabilidade → cronologia → perfil → dimensões) evitou retrabalho.
 
 <a id="43-rastreabilidade"></a>
 ### 4.3. Matriz de Rastreabilidade: Inconsistência vs. Tratamento
@@ -750,11 +745,11 @@ As respostas abaixo foram extraídas com as queries de `sql/02_perguntas.sql` e 
 **Top 5 UFs por volume:**
 
 | UF | Região | Volume (R$) | Deságio |
-| :--- | :--- | ---: | ---: |
+| :---: | :--- | ---: | ---: |
 | DF | Centro-Oeste | 3.135.638.456,35 | 15,90% |
 | RS | Sul | 820.584.056,64 | 7,18% |
 | RJ | Sudeste | 461.925.602,27 | 11,57% |
-| PI | Nordeste | 408.389.525,89 | **5,98%** |
+| PI | Nordeste | 408.389.525,89 | 5,98% |
 | SP | Sudeste | 393.783.392,48 | 9,22% |
 
 **Agregação por região:**
@@ -791,7 +786,7 @@ As respostas abaixo foram extraídas com as queries de `sql/02_perguntas.sql` e 
 <a id="7-sprints"></a>
 ## 7. Planejamento em Sprints e Lições Aprendidas
 
-O projeto foi executado em **5 Fases (Marcos Estratégicos/Épicos)** e **8 Micro-Sprints (Ciclos Táticos)**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026), sem codificação em fins de semana. 
+O projeto foi executado em **5 Fases (Marcos Estratégicos/Épicos)** e **8 Micro-Sprints (Ciclos Táticos)**, adaptando o framework Scrum a um prazo de 9 dias úteis (20/10 a 30/10/2026). 
 
 **Cronograma das Sprints (nome, objetivo, período, status):**
 
@@ -842,7 +837,7 @@ Realizada a preparação da infraestrutura do projeto e o diagnóstico de anomal
 
 ##### Sprint 2 — Limpeza e Sanitização
 
-**O que foi planejado:** completar `src/limpeza.py` (kit do professor) com funções de limpeza de texto, documentos, números e datas.
+**O que foi planejado:** completar `src/limpeza.py` que contempla funções de limpeza de texto, documentos, números e datas.
 
 **O que foi entregue:**
 - `src/limpeza.py` 100% preenchido (19 lacunas resolvidas).
@@ -867,9 +862,7 @@ Realizada a preparação da infraestrutura do projeto e o diagnóstico de anomal
 
 **Desafios e adaptações:**
 - **`config.py` e o `ImportError` inicial:** o erro não era ausência do arquivo, mas sim a execução direta no VS Code (que adiciona `src/` ao `sys.path[0]`). A solução foi usar o **modo módulo** (`python -m src.montar_tabelas`).
-- **Erro de sintaxe no `dias_ciclo`:** duplicação inicial na list comprehension. Corrigido em 1 linha.
 - **99 itens rejeitados:** descartados antes da carga (quantidade ≤ 0; valores ≤ 0; sigiloso; valor < R$ 1; homologado > 1.000x estimado; ou > R$ 1 trilhão).
-- **Sprint 3 atravessou o fim de semana**, exigindo divisão interna: regras 1-5 na sexta, regras 6-12 na segunda.
 
 **Aprendizado:** implementar as regras **em ordem de dependência** permitiu bater a Prova Real de primeira. Um erro em uma etapa inicial contaminaria todas as seguintes.
 
@@ -904,7 +897,6 @@ Realizada a preparação da infraestrutura do projeto e o diagnóstico de anomal
 - **Todas as 6 perguntas validadas** contra o Anexo 8.
 
 **Desafios e adaptações:**
-- **`current_database()` no pgAdmin:** conexão estava no banco errado (`postgres` em vez de `pncp_controladoria`). O código estava correto desde o início.
 - **Divisão por zero no Credenciamento:** resolvido com `NULLIF(..., 0)`.
 - **Encoding quebrado no pgAdmin:** apenas visual, dado estava correto no banco.
 
@@ -961,19 +953,19 @@ Realizada a preparação da infraestrutura do projeto e o diagnóstico de anomal
 <a id="72-burndown"></a>
 ### 7.2. Monitoramento de Progresso (Burndown Chart)
 
-Para garantir a transparência e o controle do cronograma, o progresso do projeto foi monitorado diariamente através de um **Gráfico de Burndown** (total de 59 itens entregáveis ao longo de 9 dias úteis):
+Para garantir a transparência e o controle do cronograma, o progresso do projeto foi monitorado diariamente através de um **Gráfico de Burndown** (total de 55 itens entregáveis ao longo de 9 dias úteis):
 
 ![Gráfico Burndown](docs/img/burndown.png)
 
 A curva do Burndown revela três fases distintas da execução do projeto, que refletem diretamente os desafios técnicos encontrados:
 
-- **Aceleração Inicial (Dias 1 a 3):** A linha real (verde) caiu drasticamente abaixo da linha ideal (azul). Isso comprova que as Fases de Fundação, Engenharia (Python) e Banco de Dados (PostgreSQL) foram executadas com altíssima velocidade e eficiência. O código limpo (54/54 testes) e o domínio do SQL permitiram entregar 40 itens de checklist em apenas três dias.
+- **Aceleração Inicial (Dias 1 a 3):** A linha real (verde) caiu drasticamente abaixo da linha ideal (azul). Isso comprova que as Fases de Fundação, Engenharia (Python) e Banco de Dados (PostgreSQL) foram executadas com velocidade.
 
-- **Estagnação Técnica (Dias 4 a 7):** A linha real "achatou" e cruzou para cima da ideal. Este platô não foi ociosidade, mas sim o custo do retrabalho (*technical debt*) gerado pelo Power BI. A transição da camada de código (onde os erros são explícitos no terminal) para a camada visual (onde bugs de renderização escondem botões e quebram marcadores) consumiu dias de testes e exigiu o downgrade de versão do software.
+- **Estagnação Técnica (Dias 4 a 7):** Este platô não foi ociosidade, mas sim o custo do retrabalho gerado pelo Power BI. A transição da camada de código (onde os erros são explícitos no terminal) para a camada visual (onde bugs de renderização escondem botões e quebram marcadores) consumiu dias de testes e exigiu o downgrade de versão do software.
 
 - **Recuperação e Entrega (Dias 8 e 9):** Com os bugs do BI resolvidos, a linha real voltou a cair e zerou os itens no prazo final de 9 dias úteis.
 
-O gráfico prova o valor de se criar uma margem de segurança (*buffer*). Se o projeto tivesse seguido a linha ideal à risca desde o início, o "apagão" de produtividade causado pelo bug do Power BI (Dias 4 a 7) teria feito o projeto estourar o prazo. A hiperprodutividade inicial nas fases de engenharia absorveu o atraso da fase visual, garantindo a entrega.
+O gráfico prova o valor de se criar uma margem de segurança, se o projeto tivesse seguido a linha ideal à risca desde o início, a baixa produtividade causada pelo bug do Power BI (Dias 4 a 7) teria feito o projeto estourar o prazo. A produtividade inicial nas fases de engenharia absorveu o atraso da fase visual, garantindo a entrega.
 
 [⬆ Voltar ao índice](#indice)
 
@@ -993,12 +985,14 @@ As decisões técnicas mais importantes do projeto, o contexto em que foram toma
 [⬆ Voltar ao índice](#indice)
 
 <a id="9-lgpd"></a>
+<a id="9-lgpd"></a>
 ## 9. Segurança da Informação e LGPD
 
-Apesar dos dados de contratações públicas serem de transparência obrigatória, o projeto adotou práticas para garantir a segurança e a conformidade:
+Apesar de os dados de contratações públicas serem de transparência obrigatória, o projeto adotou práticas para garantir a segurança, a governança e a conformidade:
 
 - **Dados Pessoais (LGPD):** A base contém CPFs de fornecedores pessoa física. O dashboard executivo **não expõe** os CPFs em nenhuma visualização, utilizando apenas a nomenclatura (nome do fornecedor) e chaves substitutas (SKs) nas análises.
 - **Segurança de Credenciais:** As senhas do banco de dados nunca foram versionadas (protegidas pelo `.gitignore`). O arquivo `.pbix` teve suas permissões de fonte de dados limpas antes da entrega, garantindo que o professor precise apenas conectar com as próprias credenciais locais.
+- **Governança e Ocultação de Chaves Técnicas:** No Power BI, todas as chaves substitutas (`sk_*`) e chaves naturais foram **ocultadas do modo de exibição de relatório**. Essa decisão de segurança e modelagem impede que o usuário final utilize IDs técnicos irrelevantes na criação de visuais (evitando erros de agregação) e protege a arquitetura lógica interna do banco de dados.
 
 [⬆ Voltar ao índice](#indice)
 
@@ -1130,8 +1124,32 @@ Abaixo está a defesa técnica do projeto, simulando um Review de Sprint executi
 
 [⬆ Voltar ao índice](#indice)
 
-<a id="13-autora"></a>
-## 13. Autora
+<a id="13-conclusao"></a>
+## 13. Conclusão e Insights Estratégicos
+
+A resposta isolada às perguntas revela os sintomas da gestão pública, mas o verdadeiro valor analítico está no cruzamento dos dados. Abaixo estão os três principais insights estratégicos extraídos do modelo, que direcionam as ações da Controladoria:
+
+**1. O Paradoxo da Competitividade (Modalidade × Volume)**
+- **O que os dados mostram:** Conforme detalhado na [P3 — Eficácia por modalidade](#64-p3), o Pregão Eletrônico gera o maior deságio (24,02%), mas movimenta apenas 6% do orçamento. Em contrapartida, as modalidades que concentram 85% do dinheiro (Concorrência Eletrônica e Credenciamento) apresentam deságio menor ou não calculável.
+- **A leitura para o negócio:** O governo adota processos altamente competitivos para compras de baixo volume, enquanto os grandes contratos são firmados em ambientes de menor concorrência.
+- **Recomendação:** Estudar a viabilidade de ampliar o uso do Pregão Eletrônico para grandes contratações (onde o impacto financeiro da economia seria exponencial) e rever os editais de Concorrência para incentivar mais lances.
+
+**2. O Risco Sistêmico em Obras (Perfil × Fornecedores × Tempo)**
+- **O que os dados mostram:** Cruzando a [P6 — Perfil dos gastos](#67-p6), a [P2 — Concentração de fornecedores](#63-p2) e a [P4 — Tempo do ciclo](#65-p4), observa-se que Obras e engenharia consomem 60,8% do orçamento (R$ 4,89 bi). Os 10 maiores fornecedores concentram 41% de todo o gasto (7 são construtoras), e o ciclo de homologação nesse setor (ex: DNIT) é até 4 vezes mais lento que a média nacional.
+- **A leitura para o negócio:** O mercado de obras públicas é altamente concentrado em poucos players, o que reduz a competitividade, alonga os prazos e aumenta a exposição da União ao risco de sobrepreço ou falhas de execução.
+- **Recomendação:** Auditoria prioritária e direcionada nos contratos de obras das grandes construtoras, buscando justificativa técnica para os casos de baixo deságio e monitoramento dos cronogramas.
+
+**3. A Inversão Geográfica do Deságio (Regional × Volume)**
+- **O que os dados mostram:** De acordo com a [P5 — Distribuição regional](#66-p5), o Centro-Oeste (via DF) concentra 44,25% do volume financeiro, mas apresenta deságio intermediário. O Norte tem o menor volume (6,58%), mas o maior deságio (21,43%). O Sul, por sua vez, tem um volume considerável (R$ 1,02 bi) com um deságio de apenas 7,96% (metade da média nacional).
+- **A leitura para o negócio:** Existe uma disparidade regional na eficiência das compras. O mercado no Sul parece ser mais fechado ou os editais são menos competitivos, enquanto a região Norte consegue condições financeiras muito melhores.
+- **Recomendação:** Realizar um *benchmarking* interno, com análise dos editais da Região Norte (que geram alto deságio) para aplicar as boas práticas nas outras regiões. Se o Sul tivesse o deságio médio nacional, a União teria economizado R$ 66 milhões adicionais.
+
+> **Conclusão Executiva:** O dashboard desenvolvido não serve apenas para monitorar o passado, mas para direcionar o futuro. Ele aponta para realização de uma auditoria de "conferência de notas fiscais" para uma auditoria de **inteligência de risco**, focando onde o dinheiro está (Obras), quem está recebendo (Top 10 Fornecedores) e onde há ineficiência (Sul e Concorrência). 
+
+[⬆ Voltar ao índice](#indice)
+
+<a id="14-autoria"></a>
+## 14. Autoria
 
 | | |
 |---|---|
